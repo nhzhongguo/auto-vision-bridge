@@ -32,7 +32,7 @@ const DEFAULT_CONFIG = {
   visionPrompt:
     "这是一张用户发送的图片。请完整描述图片内容，包括：1) 图中所有可见文字（OCR，原样输出并注意排版）；2) 场景与主体；3) 物体、人物、动作、布局；4) 颜色与风格。用中文回答。",
   logFile: join(ROOT, "bridge.log"),
-  visionTimeoutMs: 60000,
+  visionTimeoutMs: 120000, // 大截图识别较慢，放宽到 120s（超时自动重试一次）
   maxDescChars: 4000,
   cacheSize: 300,
   // 模型别名：客户端模型名 -> 上游真实模型名。用于绕过客户端"此模型不支持图片"的前置拦截，
@@ -64,6 +64,125 @@ try {
   console.error(`[vision-bridge] 配置加载失败，使用默认值：${e.message}`);
 }
 cfg.logFile = cfg.logFile || join(ROOT, "bridge.log");
+
+/* ---------------- 脏模型名清洗 / config.toml 自修复 ----------------
+ * 问题根源：之前版本把注释写到了 model = 同一行，Codex 的 TOML 解析器没有
+ * 剥离行尾注释，把 `"model"  # comment` 整段当成了一个合法的 model 名，
+ * 导致下拉列表里出现了难看的脏条目，并且调用 API 报 400 invalid model。
+ *
+ * 这里做三重防线：
+ *   1) 启动时扫描 config.toml，自动把行尾注释移到上一行，剥离重复引号；
+ *   2) 每次请求进来时，对 body.model 做清洗，去掉引号/注释/不可见字符；
+ *   3) 转发上游 /v1/models 列表时，清洗任何带非法字符的 model id/name。
+ */
+const KNOWN_CLEAN_MODELS = new Set([
+  "deepseek-v4-flash", "deepseek-v4-flash-0731", "deepseek-v4-pro",
+  "glm-5.2", "gpt-4o", "gpt-4.1", "gpt-5",
+]);
+function sanitizeModelName(raw) {
+  if (typeof raw !== "string") return raw;
+  let s = raw.trim();
+  if (!s) return raw;
+  s = s.replace(/^["'\s]+|["'\s]+$/g, "");
+  const hash = s.indexOf("#");
+  if (hash >= 0) s = s.slice(0, hash);
+  s = s.replace(/^["'\s]+|["'\s]+$/g, "");
+  s = s.replace(/[\u0000-\u001F\u007F]/g, "");
+  if (!s) return raw;
+  const normalized = s.toLowerCase().replace(/[\s_\-]+/g, "-");
+  for (const name of KNOWN_CLEAN_MODELS) {
+    if (name.toLowerCase() === normalized) return name;
+  }
+  return s;
+}
+
+function fixConfigToml() {
+  const home = process.env.CODEX_HOME || join(os.homedir(), ".codex");
+  const tomlPath = join(home, "config.toml");
+  let text;
+  try {
+    text = readFileSync(tomlPath, "utf8");
+  } catch (e) {
+    log(`[config自修复] 跳过读取 ${tomlPath}：${e.message}`);
+    return;
+  }
+  const lines = text.split(/\r?\n/);
+  let changed = false;
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    let line = lines[i];
+    if (/^\s*#/.test(line)) { out.push(line); continue; }
+    const mKey = line.match(/^(\s*)(model|base_url)\s*=\s*(.*)$/);
+    if (!mKey) { out.push(line); continue; }
+    const [, indent, key, rawRest] = mKey;
+    let rest = rawRest;
+    const strMatch = rest.match(/^("(?:[^"\\]|\\.)*")(.*)$/)
+                  || rest.match(/^('(?:[^'\\]|\\.)*')(.*)$/);
+    if (!strMatch) { out.push(line); continue; }
+    const [, quotedStr, after] = strMatch;
+    const afterTrim = after.trim();
+    if (!afterTrim) {
+      const inner = quotedStr.slice(1, -1);
+      const cleanedInner = sanitizeModelName(inner);
+      if (cleanedInner !== inner) {
+        const quote = quotedStr[0];
+        const newLine = `${indent}${key} = ${quote}${cleanedInner}${quote}`;
+        log(`[config自修复] 第${i+1}行：${key} 值本身含脏字符，已修正`);
+        out.push(newLine);
+        changed = true;
+        continue;
+      }
+      out.push(line);
+      continue;
+    }
+    let cleanValue = quotedStr.slice(1, -1);
+    if (key === "model") cleanValue = sanitizeModelName(cleanValue);
+    const quote = quotedStr[0];
+    const commentLine = afterTrim.startsWith("#")
+      ? `${indent}${afterTrim}`
+      : null;
+    if (commentLine) out.push(commentLine);
+    out.push(`${indent}${key} = ${quote}${cleanValue}${quote}`);
+    changed = true;
+    log(`[config自修复] 第${i+1}行：${key} 行尾注释已移到上一行，防止 TOML 解析串值`);
+  }
+  if (changed) {
+    try {
+      const newText = out.join(text.includes("\r\n") ? "\r\n" : "\n");
+      writeFileSync(tomlPath, newText, "utf8");
+      log(`[config自修复] config.toml 已修复，共写入 ${out.length} 行`);
+    } catch (e) {
+      log(`[config自修复] 写回失败：${e.message}`);
+    }
+  }
+}
+
+function sanitizeModelsResponse(payload) {
+  if (!payload || typeof payload !== "object") return payload;
+  if (Array.isArray(payload.data)) {
+    let changed = false;
+    const newData = [];
+    for (const item of payload.data) {
+      if (!item || typeof item !== "object") { newData.push(item); continue; }
+      let keep = true;
+      const newItem = { ...item };
+      for (const key of ["id", "name", "model", "slug"]) {
+        if (typeof newItem[key] !== "string") continue;
+        const cleaned = sanitizeModelName(newItem[key]);
+        if (cleaned !== newItem[key]) {
+          if (!cleaned || /["#]/.test(cleaned)) { keep = false; break; }
+          newItem[key] = cleaned;
+          changed = true;
+        }
+      }
+      if (keep) newData.push(newItem);
+    }
+    if (newData.length !== payload.data.length) changed = true;
+    if (changed) return { ...payload, data: newData };
+  }
+  return payload;
+}
+
 
 /* ---------------- 自动修复 Codex 模型目录（动态放行图片输入） ----------------
  * 背景：Codex 客户端会根据 model_catalog_json 里每个模型的 input_modalities 判断
@@ -261,7 +380,7 @@ function modelSupportsVision(model) {
   // 4) 未知模型 -> 按不支持处理，自动转文字（最稳妥，不会报错）
   return false;
 }
-async function describeImage(url) {
+async function describeImage(url, attempt = 1) {
   if (!cfg.zhipuApiKey || /在这里填|your[_-]?api[_-]?key|example/i.test(cfg.zhipuApiKey)) {
     throw new Error(
       "未配置有效的视觉模型 API Key（bridge/config.json 的 zhipuApiKey）。" +
@@ -294,7 +413,14 @@ async function describeImage(url) {
       body: JSON.stringify(payload),
       signal: ac.signal,
     });
-    if (!resp.ok) throw new Error(`智谱 HTTP ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+    if (!resp.ok) {
+      // 5xx 服务端抖动：重试一次
+      if (resp.status >= 500 && attempt < 2) {
+        log(`[图片] 智谱 HTTP ${resp.status}，重试一次...`);
+        return describeImage(url, attempt + 1);
+      }
+      throw new Error(`智谱 HTTP ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+    }
     const data = await resp.json();
     let text = data?.choices?.[0]?.message?.content ?? "";
     if (Array.isArray(text)) {
@@ -305,6 +431,13 @@ async function describeImage(url) {
     }
     if (!text) throw new Error("智谱返回空内容");
     return String(text).trim();
+  } catch (e) {
+    // 超时：重试一次（大截图偶尔需要更久）
+    if (e.name === "AbortError" && attempt < 2) {
+      log(`[图片] 识别超时（${cfg.visionTimeoutMs}ms），重试一次...`);
+      return describeImage(url, attempt + 1);
+    }
+    throw e;
   } finally {
     clearTimeout(timer);
   }
@@ -368,10 +501,11 @@ async function processBody(body, authHeaders) {
     }
     converted++;
     try {
+      const ts = Date.now();
       const t = await describeImage(u);
       descs.set(u, t);
       cachePut(u, t);
-      log(`[图片 ${i + 1}/${urls.length}] 识别成功（${t.length} 字）`);
+      log(`[图片 ${i + 1}/${urls.length}] 识别成功（${t.length} 字，${Date.now() - ts}ms）`);
     } catch (e) {
       descs.set(u, `[图片识别失败：${e.message}]`);
       const mime = (u.match(/^data:([^;,]+)/) || [])[1] || u.slice(0, 40);
@@ -400,7 +534,7 @@ async function processBody(body, authHeaders) {
       let last = 0;
       for (const m of f.markdown) {
         out += orig.slice(last, m.start);
-        out += labelFor(urls, m.url, descs);
+        out += labelFor(urls, m.url, descs, normMap);
         last = m.end;
       }
       out += orig.slice(last);
@@ -414,12 +548,18 @@ async function processBody(body, authHeaders) {
 
 /* ---------------- 流式响应透传（可注入视觉调用提示） ---------------- */
 function pipePlain(res, body) {
-  return new Promise((resolve, reject) => {
-    const rs = Readable.fromWeb(body);
-    rs.on("error", reject);
-    res.on("error", reject);
-    rs.pipe(res);
-    res.on("finish", resolve);
+  return new Promise((resolve) => {
+    try {
+      const rs = Readable.fromWeb(body);
+      rs.on("error", (e) => { log("[pipePlain 上游流错误] " + e.message); try { res.end(); } catch {}; resolve(); });
+      res.on("error", (e) => { log("[pipePlain 响应错误] " + e.message); resolve(); });
+      res.on("finish", resolve);
+      rs.pipe(res);
+    } catch (e) {
+      log("[pipePlain 创建流失败] " + e.message);
+      try { res.end(); } catch {}
+      resolve();
+    }
   });
 }
 
@@ -427,75 +567,94 @@ function pipePlain(res, body) {
 // 这样历史里只有一条回答消息，不会出现"提示消息被反复重放"的问题。
 // 注意：ResizeObserver/输入框只关心 deltas；done 事件的 text 也要同步前缀，避免客户端状态不一致。
 async function pipeWithNotice(res, body, notice, isRespApi) {
-  await new Promise((resolve, reject) => {
-    const rs = Readable.fromWeb(body);
-    let buf = "";
-    let targetItemId = null; // 已注入提示的 Responses 消息 item_id
-    let done = false;
-    const splitEvent = (ev) => {
-      const lines = ev.split("\n");
-      const evt = (lines.find((l) => l.startsWith("event: ")) || "").slice(7).trim();
-      const dl = lines.find((l) => l.startsWith("data: "));
-      let data = dl ? dl.slice(6).trim() : "";
-      return { evt, data, raw: ev };
-    };
-    const write = (ev) => res.write(ev);
-    const handle = (ev) => {
-      const { evt, data, raw } = splitEvent(ev);
-      if (!data || data === "[DONE]") return write(raw);
-      let j;
-      try { j = JSON.parse(data); } catch { return write(raw); }
-      if (isRespApi) {
-        // 找到第一条 output_text.delta，拼上提示
-        if (!targetItemId && evt === "response.output_text.delta" && typeof j.delta === "string") {
-          targetItemId = j.item_id;
-          j.delta = notice + j.delta;
-          log("已将视觉调用提示拼入回答首段（item_id=" + targetItemId + "）");
-        } else if (targetItemId && j.item_id === targetItemId) {
-          // 同步 done 事件的完整文本，保持客户端累积状态一致
-          if (evt === "response.output_text.done" && typeof j.text === "string") {
-            if (!j.text.startsWith(notice)) j.text = notice + j.text;
-          } else if (evt === "response.content_part.done" && j.part && typeof j.part.text === "string") {
-            if (!j.part.text.startsWith(notice)) j.part.text = notice + j.part.text;
-          } else if (evt === "response.output_item.done" && Array.isArray(j.item?.content)) {
-            for (const p of j.item.content) {
-              if (p && p.type === "output_text" && typeof p.text === "string" && !p.text.startsWith(notice)) {
-                p.text = notice + p.text;
+  await new Promise((resolve) => {
+    try {
+      const rs = Readable.fromWeb(body);
+      let buf = "";
+      let targetItemId = null;
+      let done = false;
+      const splitEvent = (ev) => {
+        const lines = ev.split("\n");
+        const evt = (lines.find((l) => l.startsWith("event: ")) || "").slice(7).trim();
+        const dl = lines.find((l) => l.startsWith("data: "));
+        let data = dl ? dl.slice(6).trim() : "";
+        return { evt, data, raw: ev };
+      };
+      const write = (ev) => { try { res.write(ev); } catch (e) { log("[SSE 写入失败] " + e.message); } };
+      const handle = (ev) => {
+        try {
+          const { evt, data, raw } = splitEvent(ev);
+          if (!data || data === "[DONE]") return write(raw);
+          let j;
+          try { j = JSON.parse(data); } catch { return write(raw); }
+          if (isRespApi) {
+            if (!targetItemId && evt === "response.output_text.delta" && typeof j.delta === "string") {
+              targetItemId = j.item_id;
+              j.delta = notice + j.delta;
+              log("已将视觉调用提示拼入回答首段（item_id=" + targetItemId + "）");
+            } else if (targetItemId && j.item_id === targetItemId) {
+              if (evt === "response.output_text.done" && typeof j.text === "string") {
+                if (!j.text.startsWith(notice)) j.text = notice + j.text;
+              } else if (evt === "response.content_part.done" && j.part && typeof j.part.text === "string") {
+                if (!j.part.text.startsWith(notice)) j.part.text = notice + j.part.text;
+              } else if (evt === "response.output_item.done" && Array.isArray(j.item?.content)) {
+                for (const p of j.item.content) {
+                  if (p && p.type === "output_text" && typeof p.text === "string" && !p.text.startsWith(notice)) {
+                    p.text = notice + p.text;
+                  }
+                }
               }
             }
+          } else {
+            const ch = j.choices?.[0]?.delta;
+            if (!done && ch && typeof ch.content === "string") {
+              done = true;
+              ch.content = notice + ch.content;
+              log("已将视觉调用提示拼入 chat 回答首段");
+            }
           }
+          const nl = raw.endsWith("\n\n") ? "\n\n" : "";
+          const out = raw.slice(0, raw.length - nl.length);
+          const dataIdx = out.indexOf("data: ");
+          if (dataIdx < 0) return write(raw);
+          write(out.slice(0, dataIdx) + "data: " + JSON.stringify(j) + nl);
+        } catch (e) {
+          log("[SSE handle 异常，已降级为原样透传] " + e.message);
+          try { res.write(ev); } catch {}
         }
-      } else {
-        // Chat Completions：在第一个 content delta 前拼提示
-        const ch = j.choices?.[0]?.delta;
-        if (!done && ch && typeof ch.content === "string") {
-          done = true;
-          ch.content = notice + ch.content;
-          log("已将视觉调用提示拼入 chat 回答首段");
+      };
+      rs.on("data", (chunk) => {
+        try {
+          buf += chunk.toString("utf8");
+          while (true) {
+            const idx = buf.indexOf("\n\n");
+            if (idx < 0) break;
+            const ev = buf.slice(0, idx + 2);
+            buf = buf.slice(idx + 2);
+            handle(ev);
+          }
+        } catch (e) {
+          log("[SSE data 回调异常] " + e.message);
         }
-      }
-      const nl = raw.endsWith("\n\n") ? "\n\n" : "";
-      const out = raw.slice(0, raw.length - nl.length);
-      const dataIdx = out.indexOf("data: ");
-      write(out.slice(0, dataIdx) + "data: " + JSON.stringify(j) + nl);
-    };
-    rs.on("data", (chunk) => {
-      buf += chunk.toString("utf8");
-      while (true) {
-        const idx = buf.indexOf("\n\n");
-        if (idx < 0) break;
-        const ev = buf.slice(0, idx + 2);
-        buf = buf.slice(idx + 2);
-        handle(ev);
-      }
-    });
-    rs.on("end", () => {
-      if (buf) handle(buf.endsWith("\n\n") ? buf : buf + "\n\n");
-      res.end();
+      });
+      rs.on("end", () => {
+        try {
+          if (buf) handle(buf.endsWith("\n\n") ? buf : buf + "\n\n");
+          res.end();
+          resolve();
+        } catch (e) {
+          log("[SSE end 回调异常] " + e.message);
+          try { res.end(); } catch {}
+          resolve();
+        }
+      });
+      rs.on("error", (e) => { log("[SSE 上游流错误] " + e.message); try { res.end(); } catch {}; resolve(); });
+      res.on("error", (e) => { log("[SSE 响应写入错误] " + e.message); resolve(); });
+    } catch (e) {
+      log("[pipeWithNotice 创建流失败] " + e.message);
+      try { res.end(); } catch {}
       resolve();
-    });
-    rs.on("error", reject);
-    res.on("error", reject);
+    }
   });
 }
 
@@ -538,6 +697,15 @@ const server = http.createServer(async (req, res) => {
     if (raw) {
       try {
         body = JSON.parse(raw);
+        // ↓↓↓ 防御性清洗：防止 Codex 把注释/引号串进 model 名（下拉列表里出现脏条目）
+        if (typeof body.model === "string") {
+          const cleaned = sanitizeModelName(body.model);
+          if (cleaned !== body.model) {
+            log(`模型名清洗："${body.model}" -> "${cleaned}"`);
+            body.model = cleaned;
+          }
+        }
+        // ↑↑↑ 清洗结束
         let model = body?.model ?? "";
         // 模型别名：客户端名 -> 上游真实名，并强制走识图转换（绕过客户端图片拦截）
         let forceConvert = false;
@@ -601,7 +769,23 @@ const server = http.createServer(async (req, res) => {
       upHeaders[k] = v;
     }
     res.writeHead(up.status, upHeaders);
-    if (up.body) {
+    // ↓↓↓ 如果是 GET /v1/models，先清洗掉脏模型名再返回给 Codex
+    let bodyText = null;
+    if (req.method === "GET" && /\/v1\/models(\?|$)/.test(path) && up.body) {
+      try {
+        bodyText = await up.text();
+        const json = JSON.parse(bodyText);
+        const cleaned = sanitizeModelsResponse(json);
+        if (cleaned !== json) {
+          log(`/v1/models 响应已清洗（移除/修正带非法字符的 model 条目）`);
+          bodyText = JSON.stringify(cleaned);
+        }
+      } catch (_) { /* 非 JSON 或解析失败就按原来的流透传 */ bodyText = null; }
+    }
+    // ↑↑↑ 清洗结束
+    if (bodyText !== null) {
+      res.end(bodyText);
+    } else if (up.body) {
       const notice =
         cfg.noticeEnabled && isStream && converted > 0 && /responses|chat\/completions/.test(path)
           ? cfg.noticeText
@@ -622,7 +806,17 @@ const server = http.createServer(async (req, res) => {
   } catch (e) {
     log(`处理异常：${e.stack || e.message}`);
     try {
-      if (!res.headersSent) res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
+      if (!res.headersSent) res.writ
+
+process.on("uncaughtException", (e) => {
+  log("[uncaughtException 已捕获，进程不退出] " + (e.stack || e.message));
+});
+process.on("unhandledRejection", (reason, promise) => {
+  const m = reason instanceof Error ? (reason.stack || reason.message) : String(reason);
+  log("[unhandledRejection 已捕获] " + m);
+});
+
+eHead(500, { "content-type": "application/json; charset=utf-8" });
       res.end(JSON.stringify({ error: { message: "vision-bridge 内部错误：" + e.message } }));
     } catch {}
   }
@@ -643,6 +837,7 @@ server.listen(cfg.port, cfg.listen, () => {
 });
 
 // 启动即修复一次模型目录，并监听后续被 cc-switch 等工具覆盖的情况
+fixConfigToml();
 fixModelCatalog(false);
 try {
   watch(codexCatalogPath(), { persistent: false }, (evt) => {
