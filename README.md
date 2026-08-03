@@ -303,7 +303,7 @@ Register-ScheduledTask -TaskName "AutoVisionBridge" -Action $action -Trigger $tr
 
 遇到问题、想提需求、或一起交流 AI 玩法？扫码加入交流群（QQ 群号：1016190748）：
 
-![交流群二维码](docs/community-group-qr.png)
+<p align="center"><img src="docs/community-group-qr.png" alt="交流群二维码" width="300" /></p>
 
 （若扫码不便，也可在 QQ 直接搜索群号加入）
 
