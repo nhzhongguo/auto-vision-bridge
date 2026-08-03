@@ -1,5 +1,8 @@
 # 🦾 Auto Vision Bridge — 给不会看图的 AI 自动装上眼睛
 
+> 🌐 **语言切换:** [简体中文](README.md) · [English](README.en.md)
+
+
 > **零依赖 · 自动识图 · 即插即用**
 >
 > 把任意**不支持视觉**的大模型（DeepSeek / Kimi / 文心 / GLM 文本版……）变成"能看图"的模型：

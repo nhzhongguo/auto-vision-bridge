@@ -1,5 +1,8 @@
 # 🤖 AI 一键部署指令（AI-DEPLOY）
 
+> 🌐 **语言切换:** [简体中文](AI-DEPLOY.md) · [English](AI-DEPLOY.en.md)
+
+
 任何人想用这个项目时，**不需要自己读代码**——把下面这段话连仓库地址一起发给任意 AI 编程助手
 （Codex / Claude Code / Cursor / 通义灵码 / Copilot 等支持执行命令的 AI），
 AI 就会自动完成：**部署 → 询问视觉模型 → 收集 API Key → 写配置 → 启动 → 验证 → 交付**。
