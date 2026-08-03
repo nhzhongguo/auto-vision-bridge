@@ -1,0 +1,45 @@
+{
+  "name": "auto-vision-bridge",
+  "version": "1.1.0",
+  "description": "Auto Vision Bridge：零依赖自动识图中转层，给 DeepSeek 等不支持视觉的模型自动补上看图能力（支持视觉的模型原样透传），附赠 7 家服务商 20+ 免费视觉模型的 MCP Server",
+  "type": "module",
+  "bin": {
+    "auto-vision-bridge": "./dist/index.js"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "setup": "node scripts/setup.mjs",
+    "bridge": "node bridge/server.mjs",
+    "bridge:test": "node bridge/test-bridge.mjs",
+    "test": "node test/test-client.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "keywords": [
+    "mcp",
+    "auto-vision-bridge",
+    "vision-bridge",
+    "image-understanding",
+    "model-context-protocol",
+    "glm",
+    "glm-4.6v",
+    "vision",
+    "多模态",
+    "qwen-vl",
+    "deepseek"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
