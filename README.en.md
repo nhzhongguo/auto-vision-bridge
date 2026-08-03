@@ -300,6 +300,16 @@ Register-ScheduledTask -TaskName "AutoVisionBridge" -Action $action -Trigger $tr
 | I want a model to **always pass through / always convert** | Add the model name to `visionModels` or `nonVisionModels` in `bridge/config.json`, then restart |
 | Config changes have no effect | Restart the Bridge process (config is read only at startup) |
 
+---
+
+## 💬 Community Group
+
+Have questions, feature requests, or just want to chat about AI? Scan the QR code to join the group:
+
+![Community group QR code](docs/community-group-qr.png)
+
+(The QR image is large — zoom in when scanning.)
+
 ## License
 
 [MIT](LICENSE) © nhzhongguo

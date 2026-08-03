@@ -297,6 +297,16 @@ Register-ScheduledTask -TaskName "AutoVisionBridge" -Action $action -Trigger $tr
 | 我想让某个模型**总是透传/总是转换** | 把模型名加进 `bridge/config.json` 的 `visionModels` 或 `nonVisionModels`，重启生效 |
 | 改了配置没生效 | 重启 Bridge 进程（配置只在启动时读取） |
 
+---
+
+## 💬 交流群
+
+遇到问题、想提需求、或一起交流 AI 玩法？扫码加入交流群：
+
+![交流群二维码](docs/community-group-qr.png)
+
+（二维码图片较大，扫码时请放大查看）
+
 ## License
 
 [MIT](LICENSE) © nhzhongguo
