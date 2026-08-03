@@ -76,6 +76,20 @@ flowchart TD
 
 ---
 
+## 📸 演示
+
+**端到端实测**（DeepSeek 无视觉模型 + 智谱 GLM-4.6V 自动识图，真实运行输出）：
+
+![端到端实测](docs/demo-terminal.png)
+
+**AI 一键部署流程**（把仓库地址发给任意 AI 助手后，AI 自动完成的全部步骤）：
+
+![AI 一键部署演示](docs/deploy-demo.gif)
+
+> 演示素材由 `docs/make-demo-assets.py` 生成（真实输出渲染 + 部署流程动画），可自行重新生成。
+
+---
+
 ## 快速开始（约 3 分钟）
 
 ### 0. 环境要求
