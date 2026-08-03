@@ -300,6 +300,9 @@ Register-ScheduledTask -TaskName "AutoVisionBridge" -Action $action -Trigger $tr
 | Image larger than 15MB | Compress it first; the Bridge truncates or rejects oversized images |
 | I want a model to **always pass through / always convert** | Add the model name to `visionModels` or `nonVisionModels` in `bridge/config.json`, then restart |
 | Config changes have no effect | Restart the Bridge process (config is read only at startup) |
+| Client says "**this model does not support image input**" | Codex/cc-switch: the Bridge auto-fixes the model catalog on startup (adds `image` to `input_modalities` for every model, and re-fixes it after every model switch). Restart the client after the fix. Other clients: use `modelAliases` to map a vision-capable name (e.g. `gpt-4o`) to your real model, and the Bridge will force image-to-text conversion. |
+| "**API Key not configured**" when sending an image | `zhipuApiKey` in `bridge/config.json` is still a placeholder. Run `node scripts/setup.mjs` or fill it in manually, then restart the Bridge. |
+| Port already in use on startup | The Bridge is probably already running (the start script detects this and skips). To change the port, edit `port` in `bridge/config.json` and restart. |
 
 ---
 

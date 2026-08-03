@@ -180,6 +180,29 @@ wire_api = "responses"
 
 ---
 
+## ❓ 常见问题
+
+**Q：客户端提示「此模型不支持图片输入，请尝试其他模型」？**
+
+部分客户端（如 Codex）会按模型目录判断能否发图，把中转/第三方模型当成纯文本模型，在图片到达 Bridge 之前就拦下了。Bridge 已内置自动处理：
+
+- **Codex / cc-switch 用户**：Bridge 启动时会**自动检测并修复**模型目录（把所有模型的 `input_modalities` 动态补上 `image`，不写死任何模型名）；用 cc-switch 切换模型导致目录被覆盖时，也会自动重新修复。修复后**重启客户端**即可发图。
+- **其他客户端**：可用 `modelAliases` 别名绕过 —— 客户端配置一个"支持视觉"的模型名（如 `gpt-4o`），Bridge 收到请求后映射回你的真实模型名，并强制走自动识图：
+
+```json
+"modelAliases": { "gpt-4o": "你的真实模型名" }
+```
+
+**Q：发图后提示「未配置有效的视觉模型 API Key」？**
+
+说明 `bridge/config.json` 里的 `zhipuApiKey` 还是占位符。运行 `node scripts/setup.mjs` 交互式配置（静默输入，不回显），或手动填写后重启 Bridge。
+
+**Q：启动时提示端口被占用？**
+
+说明 Bridge 可能已在运行（启动脚本会自动检测并跳过重复启动）。若确实要换端口，改 `bridge/config.json` 的 `port` 后重启。
+
+---
+
 ## 🤖 AI 一键部署
 
 把下面这段话连同仓库地址发给任意 AI 编程助手（Codex / Claude Code / Cursor / 通义灵码 / Copilot……）：

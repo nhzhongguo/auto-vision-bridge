@@ -262,7 +262,12 @@ function modelSupportsVision(model) {
   return false;
 }
 async function describeImage(url) {
-  if (!cfg.zhipuApiKey) throw new Error("未配置 zhipuApiKey，无法自动识别图片");
+  if (!cfg.zhipuApiKey || /在这里填|your[_-]?api[_-]?key|example/i.test(cfg.zhipuApiKey)) {
+    throw new Error(
+      "未配置有效的视觉模型 API Key（bridge/config.json 的 zhipuApiKey）。" +
+      "请运行 node scripts/setup.mjs 交互式配置，或手动把 Key 填进 bridge/config.json 后重启 bridge。"
+    );
+  }
   const payload = {
     model: cfg.visionModel,
     temperature: 0.2,
@@ -623,6 +628,16 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+server.on("error", (e) => {
+  if (e.code === "EADDRINUSE") {
+    const msg = `端口 ${cfg.port} 已被占用：可能 bridge 已在运行（先停止旧进程，或改 config.json 的 port）。错误：${e.message}`;
+    console.error(msg);
+    log(msg);
+    process.exit(1);
+  }
+  console.error(`[vision-bridge] 服务错误：${e.message}`);
+  log(`服务错误：${e.message}`);
+});
 server.listen(cfg.port, cfg.listen, () => {
   log(`vision-bridge 已启动：http://${cfg.listen}:${cfg.port} -> 上游 ${cfg.upstream}`);
 });
