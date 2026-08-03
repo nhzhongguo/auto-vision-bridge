@@ -5,6 +5,8 @@
   "zhipuApiKey": "在这里填你的视觉模型 API Key",
   "visionBaseUrl": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
   "visionModel": "glm-4.6v",
+  "noticeEnabled": true,
+  "noticeText": "📷 检测到当前模型不支持直接看图，正在调用视觉模型识别图片…\n",
   "visionPrompt": "这是一张用户发送的图片。请完整描述图片内容，包括：1) 图中所有可见文字（OCR，原样输出并注意排版）；2) 场景与主体；3) 物体、人物、动作、布局；4) 颜色与风格。用中文回答。",
   "visionModels": [
     "gpt-4o", "gpt-4.1", "gpt-5", "o1", "o3", "o4", "o5",

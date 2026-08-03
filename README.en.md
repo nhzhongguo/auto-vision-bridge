@@ -40,6 +40,7 @@ Auto Vision Bridge is a **lightweight proxy layer** (reverse proxy) between your
 - 🔌 **Zero dependencies**: Node.js built-ins only (Node ≥ 18). Runs without `npm install`
 - 🖼️ **All three image channels**: Chat API (`image_url`), Responses API (`input_image`), Markdown images (`![](data:...)`)
 - ⚡ **Same-image cache**: identical images are never re-sent to the vision API (300-entry LRU)
+- 📢 **Call notice**: when the vision model is invoked, the chat window first shows “📷 detecting image with vision model…” instead of appearing stuck (`noticeEnabled` toggles it, `noticeText` customizes the message)
 - 🔐 **Key safety**: the vision API key lives only in local `bridge/config.json` (gitignored) — **never in git, never shared with anyone**
 - 🛠️ **Interactive setup wizard**: `node scripts/setup.mjs` — silent key entry (no echo), automatic backup of old config, optional 1×1 image key verification
 - 🚀 **AI one-click deployment**: send the repo URL to any AI coding assistant; it deploys → asks for config → writes the key → starts → verifies → delivers

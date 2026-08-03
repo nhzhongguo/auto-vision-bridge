@@ -40,6 +40,7 @@ Auto Vision Bridge 是夹在你 AI 客户端与模型服务之间的**轻量中�
 - 🔌 **零依赖**：只用 Node.js 原生模块（Node ≥ 18），不 `npm install` 也能跑
 - 🖼️ **三种图片通道全覆盖**：Chat API（`image_url`）、Responses API（`input_image`）、Markdown 图片（`![](data:...)`）
 - ⚡ **同图缓存**：同一张图不重复调用视觉 API（300 条 LRU 缓存），省钱又省时
+- 📢 **调用提示**：需要调用视觉模型时，聊天窗口会先显示「📷 正在调用视觉模型识别图片…」，不再干等没反应（`noticeEnabled` 可开关，`noticeText` 可改文案）
 - 🔐 **Key 安全**：视觉 API Key 只存在本地 `bridge/config.json`（已 gitignore），**不进 git、不发给任何人**
 - 🛠️ **交互式配置向导**：`node scripts/setup.mjs` —— 静默输入 Key（不回显）、自动备份旧配置、可选 1×1 图验证 Key
 - 🚀 **AI 一键部署**：把仓库地址发给任意 AI 编程助手，自动完成部署 → 逐项询问配置 → 写 Key → 启动 → 验证 → 交付

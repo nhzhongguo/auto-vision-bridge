@@ -33,6 +33,9 @@ const DEFAULT_CONFIG = {
   visionTimeoutMs: 60000,
   maxDescChars: 4000,
   cacheSize: 300,
+  // 调用视觉模型时是否在窗口输出提示（仅流式请求生效）
+  noticeEnabled: true,
+  noticeText: "📷 检测到当前模型不支持直接看图，正在调用视觉模型识别图片…\n",
   // 明确支持视觉的模型关键词（命中则图片原样透传）
   visionModels: [
     "gpt-4o", "gpt-4.1", "gpt-5", "o1", "o3", "o4", "o5",
@@ -202,7 +205,7 @@ function labelFor(urls, url, descs) {
 async function processBody(body) {
   const state = { found: [] };
   walk(body, null, null, state);
-  if (!state.found.length) return { body, imageCount: 0, replaced: 0, fromCache: 0 };
+  if (!state.found.length) return { body, imageCount: 0, replaced: 0, fromCache: 0, converted: 0 };
 
   // 去重收集所有图片 URL
   const urls = [];
@@ -221,6 +224,7 @@ async function processBody(body) {
   // 逐张识别（缓存命中则不调 API）
   const descs = new Map();
   let fromCache = 0;
+  let converted = 0;
   for (let i = 0; i < urls.length; i++) {
     const u = urls[i];
     const hit = cacheGet(u);
@@ -230,6 +234,7 @@ async function processBody(body) {
       log(`[图片 ${i + 1}/${urls.length}] 命中缓存`);
       continue;
     }
+    converted++;
     try {
       const t = await describeImage(u);
       descs.set(u, t);
@@ -269,7 +274,78 @@ async function processBody(body) {
       replaced++;
     }
   }
-  return { body, imageCount: urls.length, replaced, fromCache };
+  return { body, imageCount: urls.length, replaced, fromCache, converted };
+}
+
+
+/* ---------------- 流式响应透传（可注入视觉调用提示） ---------------- */
+function pipePlain(res, body) {
+  return new Promise((resolve, reject) => {
+    const rs = Readable.fromWeb(body);
+    rs.on("error", reject);
+    res.on("error", reject);
+    rs.pipe(res);
+    res.on("finish", resolve);
+  });
+}
+
+// Responses API SSE 事件序列：完整模拟一条 assistant 提示消息
+function respNoticeEvents(text) {
+  const id = "msg_vision_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const item = (status, content) => ({ id, type: "message", status, role: "assistant", content });
+  const e = (type, extra) => `event: ${type}\ndata: ${JSON.stringify({ type, ...extra })}\n\n`;
+  let s = "";
+  s += e("response.output_item.added", { output_index: 0, item: item("in_progress", []) });
+  s += e("response.content_part.added", { item_id: id, output_index: 0, content_index: 0, part: { type: "output_text", text: "", annotations: [] } });
+  s += e("response.output_text.delta", { item_id: id, output_index: 0, content_index: 0, delta: text });
+  s += e("response.output_text.done", { item_id: id, output_index: 0, content_index: 0, text, annotations: [] });
+  s += e("response.content_part.done", { item_id: id, output_index: 0, content_index: 0, part: { type: "output_text", text, annotations: [] } });
+  s += e("response.output_item.done", { output_index: 0, item: item("completed", [{ type: "output_text", text, annotations: [] }]) });
+  return s;
+}
+
+// Chat Completions 流：先发 role chunk 再发内容 chunk
+function chatNoticeChunks(text, model) {
+  const ts = Math.floor(Date.now() / 1000);
+  const id = "chatcmpl-visionbridge-" + Date.now().toString(36);
+  const base = { id, object: "chat.completion.chunk", created: ts, model };
+  const roleChunk = { ...base, choices: [{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }] };
+  const textChunk = { ...base, choices: [{ index: 0, delta: { content: text }, finish_reason: null }] };
+  return `data: ${JSON.stringify(roleChunk)}\n\ndata: ${JSON.stringify(textChunk)}\n\n`;
+}
+
+// 逐 chunk 透传：转发第一个 SSE 事件后注入提示，再继续透传上游流
+async function pipeWithNotice(res, body, notice, isRespApi, model) {
+  await new Promise((resolve, reject) => {
+    const rs = Readable.fromWeb(body);
+    let buffer = "";
+    let injected = false;
+    rs.on("data", (chunk) => {
+      buffer += chunk.toString("utf8");
+      if (!injected) {
+        const idx = buffer.indexOf("\n\n");
+        if (idx >= 0) {
+          const head = buffer.slice(0, idx + 2);
+          buffer = buffer.slice(idx + 2);
+          injected = true;
+          res.write(head);
+          res.write(isRespApi ? respNoticeEvents(notice) : chatNoticeChunks(notice, model));
+          log("已注入视觉调用提示到流式响应");
+        }
+      }
+      if (buffer) {
+        res.write(buffer);
+        buffer = "";
+      }
+    });
+    rs.on("end", () => {
+      if (buffer) res.write(buffer);
+      res.end();
+      resolve();
+    });
+    rs.on("error", reject);
+    res.on("error", reject);
+  });
 }
 
 /* ---------------- HTTP 服务 ---------------- */
@@ -307,6 +383,7 @@ const server = http.createServer(async (req, res) => {
     let body = null;
     let imageCount = 0;
     let fromCache = 0;
+    let converted = 0;
     if (raw) {
       try {
         body = JSON.parse(raw);
@@ -319,11 +396,14 @@ const server = http.createServer(async (req, res) => {
           body = r.body;
           imageCount = r.imageCount;
           fromCache = r.fromCache;
+          converted = r.converted;
         }
       } catch (e) {
         log(`请求体解析失败（按原样转发）：${e.message}`);
       }
     }
+
+    const isStream = !!(body && body.stream === true);
 
     // 转发上游
     const upUrl = cfg.upstream.replace(/\/+$/, "") + path;
@@ -362,13 +442,15 @@ const server = http.createServer(async (req, res) => {
     }
     res.writeHead(up.status, upHeaders);
     if (up.body) {
-      await new Promise((resolve, reject) => {
-        const rs = Readable.fromWeb(up.body);
-        rs.on("error", reject);
-        res.on("error", reject);
-        rs.pipe(res);
-        res.on("finish", resolve);
-      });
+      const notice =
+        cfg.noticeEnabled && isStream && converted > 0 && /responses|chat\/completions/.test(path)
+          ? cfg.noticeText
+          : null;
+      if (notice) {
+        await pipeWithNotice(res, up.body, notice, path.startsWith("/v1/responses"), body?.model || "vision-bridge");
+      } else {
+        await pipePlain(res, up.body);
+      }
     } else {
       res.end();
     }
