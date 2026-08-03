@@ -304,11 +304,11 @@ Register-ScheduledTask -TaskName "AutoVisionBridge" -Action $action -Trigger $tr
 
 ## 💬 Community Group
 
-Have questions, feature requests, or just want to chat about AI? Scan the QR code to join the group:
+Have questions, feature requests, or just want to chat about AI? Scan the QR code to join the QQ group (Group ID: 1016190748):
 
 ![Community group QR code](docs/community-group-qr.png)
 
-(The QR image is large — zoom in when scanning.)
+(If scanning is inconvenient, you can also search the group ID directly in QQ.)
 
 ## License
 
