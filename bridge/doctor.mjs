@@ -87,10 +87,24 @@ if (!existsSync(configPath)) {
 const port = Number(arg("--port", (cfg && cfg.port) || 57399));
 const BASE = `http://127.0.0.1:${port}`;
 
+// 上游可能强制鉴权：优先读 Codex config.toml 的 experimental_bearer_token，
+// 没有则用占位 Key 并提示（否则带图/透传测试会被上游 401 拦下，误判为 bridge 故障）。
+function upstreamAuth() {
+  try {
+    const home = process.env.CODEX_HOME || join(os.homedir(), ".codex");
+    const toml = readFileSync(join(home, "config.toml"), "utf8");
+    const m = toml.match(/experimental_bearer_token\s*=\s*"([^"]+)"/);
+    if (m && m[1]) return `Bearer ${m[1]}`;
+  } catch {}
+  console.warn("[提示] config.toml 未配置 experimental_bearer_token，使用占位 Key 测试；上游强制鉴权时会 401。");
+  return "Bearer doctor";
+}
+const AUTH = upstreamAuth();
+
 function fetchJson(path, body, timeoutMs = 60000) {
   return new Promise((resolve) => {
     const req = http.request(
-      { host: "127.0.0.1", port, path, method: body ? "POST" : "GET", headers: body ? { "content-type": "application/json", authorization: "Bearer doctor" } : {} },
+      { host: "127.0.0.1", port, path, method: body ? "POST" : "GET", headers: body ? { "content-type": "application/json", authorization: AUTH } : {} },
       (res) => {
         let data = "";
         res.on("data", (c) => (data += c));

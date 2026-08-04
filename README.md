@@ -320,6 +320,8 @@ Register-ScheduledTask -TaskName "AutoVisionBridge" -Action $action -Trigger $tr
 | 图片超过 15MB | 压缩后再发；Bridge 对超大图片会截断或报错 |
 | 我想让某个模型**总是透传/总是转换** | 把模型名加进 `bridge/config.json` 的 `visionModels` 或 `nonVisionModels`，重启生效 |
 | 改了配置没生效 | 重启 Bridge 进程（配置只在启动时读取） |
+| `doctor.mjs` / `test-bridge.mjs` 测试被上游 401 拦下 | 脚本已自动读取 Codex `config.toml` 的 `experimental_bearer_token`；未配置时提示并使用占位 Key |
+| `[catalog修复]` 一直找不到/写不进模型目录 | `config.toml` 的 `model_catalog_json` 若为绝对路径，Bridge 直接使用，不再与 home 重复拼接（双重路径修复） |
 
 ---
 

@@ -15,6 +15,8 @@
  */
 import { readFileSync } from "node:fs";
 import { deflateSync } from "node:zlib";
+import { join } from "node:path";
+import os from "node:os";
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(name);
@@ -64,7 +66,18 @@ function tinyPng() {
 
 const b64 = IMG ? readFileSync(IMG).toString("base64") : tinyPng().toString("base64");
 const dataUrl = `data:image/png;base64,${b64}`;
-const AUTH = "Bearer test";
+// 上游可能强制鉴权：优先读 Codex config.toml 的 experimental_bearer_token（占位 Key 会被上游 401 拦截）
+function upstreamAuth() {
+  try {
+    const home = process.env.CODEX_HOME || join(os.homedir(), ".codex");
+    const toml = readFileSync(join(home, "config.toml"), "utf8");
+    const m = toml.match(/experimental_bearer_token\s*=\s*"([^"]+)"/);
+    if (m && m[1]) return `Bearer ${m[1]}`;
+  } catch {}
+  console.warn("[提示] config.toml 未配置 experimental_bearer_token，使用占位 Key 测试；上游强制鉴权时会 401。");
+  return "Bearer test";
+}
+const AUTH = upstreamAuth();
 
 // ---------- 工具函数 ----------
 let passed = 0;

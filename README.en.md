@@ -303,6 +303,8 @@ Register-ScheduledTask -TaskName "AutoVisionBridge" -Action $action -Trigger $tr
 | Client says "**this model does not support image input**" | Codex/cc-switch: the Bridge auto-fixes the model catalog on startup (adds `image` to `input_modalities` for every model, and re-fixes it after every model switch). Restart the client after the fix. Other clients: use `modelAliases` to map a vision-capable name (e.g. `gpt-4o`) to your real model, and the Bridge will force image-to-text conversion. |
 | "**API Key not configured**" when sending an image | `zhipuApiKey` in `bridge/config.json` is still a placeholder. Run `node scripts/setup.mjs` or fill it in manually, then restart the Bridge. |
 | Port already in use on startup | The Bridge is probably already running (the start script detects this and skips). To change the port, edit `port` in `bridge/config.json` and restart. |
+| `doctor.mjs` / `test-bridge.mjs` tests blocked by upstream 401 | The scripts now auto-read `experimental_bearer_token` from Codex `config.toml`; if absent they warn and fall back to a placeholder Key |
+| `[catalog修复]` keeps failing to find the model catalog | If `model_catalog_json` in `config.toml` is an absolute path, the Bridge now uses it directly instead of joining it onto the home dir again (double-path fix) |
 
 ---
 

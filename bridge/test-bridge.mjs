@@ -11,6 +11,8 @@
  *   3) 无图普通请求 -> 正常透传（零开销）
  */
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import os from "node:os";
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(name);
@@ -67,12 +69,25 @@ function summarize(text) {
   }
 }
 
+// 上游可能强制鉴权：优先读 Codex config.toml 的 experimental_bearer_token（占位 Key 会被上游 401 拦截）
+function upstreamAuth() {
+  try {
+    const home = process.env.CODEX_HOME || join(os.homedir(), ".codex");
+    const toml = readFileSync(join(home, "config.toml"), "utf8");
+    const m = toml.match(/experimental_bearer_token\s*=\s*"([^"]+)"/);
+    if (m && m[1]) return `Bearer ${m[1]}`;
+  } catch {}
+  console.warn("[提示] config.toml 未配置 experimental_bearer_token，使用占位 Key 测试；上游强制鉴权时会 401。");
+  return "Bearer test";
+}
+const AUTH = upstreamAuth();
+
 async function send(name, body) {
   const t0 = Date.now();
   try {
     const resp = await fetch(`${BRIDGE}/v1/responses`, {
       method: "POST",
-      headers: { "content-type": "application/json", authorization: "Bearer test" },
+      headers: { "content-type": "application/json", authorization: AUTH },
       body: JSON.stringify(body),
     });
     const text = await resp.text();

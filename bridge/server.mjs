@@ -14,7 +14,7 @@
 import http from "node:http";
 import { createHash } from "node:crypto";
 import { readFileSync, appendFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, isAbsolute } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { watch, writeFileSync } from "node:fs";
@@ -200,6 +200,10 @@ function codexCatalogPath() {
     const m = toml.match(/^model_catalog_json\s*=\s*"([^"]+)"/m);
     if (m) rel = m[1];
   } catch {}
+  // 修复：config.toml 的 model_catalog_json 可能是绝对路径（cc-switch 等工具写入），
+  // path.join 会把绝对路径再次拼到 home 后面产生双重路径（C:\…\.codex\C:\…\file.json），
+  // 导致 [catalog修复] 永远找不到文件而失效。绝对路径直接使用。
+  if (isAbsolute(rel)) return rel;
   return join(home, rel);
 }
 
