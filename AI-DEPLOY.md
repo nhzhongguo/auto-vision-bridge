@@ -252,6 +252,15 @@ node bridge/doctor.mjs        # 体检，全部 PASS 后按第 6 步改客户端
   node bridge/test-bridge.mjs --image "图片的完整路径.png"
   ```
 - `--image` 用完整绝对路径；路径含空格时用双引号包住；忘了克隆到哪可以先 `Get-ChildItem -Recurse -Filter test-bridge.mjs`（Windows）/ `find . -name test-bridge.mjs`（macOS/Linux）搜一下。
+### Q9: visionModel 配成了纯文本模型（如 `Qwen/Qwen3.5-9B`），识图失败
+
+- **根因**：`bridge/config.json` 的 `visionModel` 必须是**支持视觉的多模态模型**。纯文本模型（名字不带 VL/vision/4v 等标记，如 `Qwen/Qwen3.5-9B`）不能接收图片，识图请求会被服务商拒绝。
+- **排查**：`node bridge/doctor.mjs` → 出现 `⚠️ [WARN] visionModel 名称不像视觉模型` 即为此问题。
+- **修复**：把 `visionModel` 改成视觉模型并重启 bridge：
+  - 硅基流动：`Qwen/Qwen2.5-VL-7B-Instruct`（免费）或 `Qwen/Qwen2.5-VL-72B-Instruct` / `Qwen/Qwen3-VL-*`
+  - 智谱：`glm-4.6v`
+  - 或重跑 `node scripts/setup.mjs` 选服务商，自动填入正确默认值
+- **注意**：客户端用的模型名（如 `Qwen/Qwen3.5-9B`）可以是纯文本模型——bridge 会自动把图片转成文字再送过去；**只有 `visionModel` 必须是视觉模型**。
 ## 回滚（万一要还原）
 
 1. **配置**：恢复备份——`bridge/config.json.bak` 覆盖回 `bridge/config.json`；`config.toml.bak-*` 覆盖回 `config.toml`。

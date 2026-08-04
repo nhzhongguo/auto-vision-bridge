@@ -251,6 +251,15 @@ node bridge/doctor.mjs        # health check; after all PASS, change the client 
   node bridge/test-bridge.mjs --image "full/path/to/image.png"
   ```
 - Use a full absolute path for `--image`; wrap it in quotes if it contains spaces. If you forgot where you cloned it, search for it with `Get-ChildItem -Recurse -Filter test-bridge.mjs` (Windows) / `find . -name test-bridge.mjs` (macOS/Linux).
+### Q9: `visionModel` is set to a text-only model (e.g. `Qwen/Qwen3.5-9B`), image recognition fails
+
+- **Root cause**: `visionModel` in `bridge/config.json` must be a **multimodal model that supports vision**. A text-only model (name without VL/vision/4v markers, e.g. `Qwen/Qwen3.5-9B`) cannot accept images, so the recognition request is rejected by the provider.
+- **Diagnose**: `node bridge/doctor.mjs` → a `⚠️ [WARN] visionModel 名称不像视觉模型` entry means this is the problem.
+- **Fix**: change `visionModel` to a vision model and restart the bridge:
+  - SiliconFlow: `Qwen/Qwen2.5-VL-7B-Instruct` (free) or `Qwen/Qwen2.5-VL-72B-Instruct` / `Qwen/Qwen3-VL-*`
+  - Zhipu: `glm-4.6v`
+  - Or re-run `node scripts/setup.mjs` and pick the provider to fill in the correct default automatically
+- **Note**: the client-side model name (e.g. `Qwen/Qwen3.5-9B`) may be a text-only model — the bridge automatically converts the image to text before forwarding; **only `visionModel` must be a vision model**.
 ## Rollback (just in case)
 
 1. **Config**: restore backups — `bridge/config.json.bak` back over `bridge/config.json`; `config.toml.bak-*` back over `config.toml`.

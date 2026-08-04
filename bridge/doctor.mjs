@@ -36,9 +36,18 @@ const arg = (name, fallback) => {
 
 const configPath = arg("--config", DEFAULT_CONFIG);
 const results = [];
+function render(name, ok, detail, warnFlag = false) {
+  const icon = warnFlag ? "⚠️" : ok === true ? "✅" : ok === false ? "❌" : "⏭️";
+  const tag = warnFlag ? "WARN" : ok === true ? "PASS" : ok === false ? "FAIL" : "SKIP";
+  console.log(`${icon} [${tag}] ${name}${detail ? "  —  " + detail : ""}`);
+}
 function check(name, ok, detail = "") {
   results.push({ name, ok, detail });
-  console.log(`${ok === true ? "✅" : ok === false ? "❌" : "⏭️"} [${ok === true ? "PASS" : ok === false ? "FAIL" : "SKIP"}] ${name}${detail ? "  —  " + detail : ""}`);
+  render(name, ok, detail);
+}
+function warn(name, detail = "") {
+  results.push({ name, ok: null, detail, warn: true });
+  render(name, null, detail, true);
 }
 
 /* ---------- 1. Node 版本 ---------- */
@@ -58,6 +67,18 @@ if (!existsSync(configPath)) {
     check("config.json 可解析", true, configPath);
     check("视觉 API Key 已配置", key.length > 8, `zhipuApiKey=${masked}`);
     check("upstream 已配置", !!(cfg.upstream && /^https?:\/\//.test(cfg.upstream)), `upstream=${cfg.upstream}`);
+    const vm = String(cfg.visionModel || "").trim();
+    if (!vm) {
+      check("visionModel 已配置", false, "config.json 缺少 visionModel 字段（请用 node scripts/setup.mjs 配置）");
+    } else if (
+      /(vl|vision|omni|multimodal|4v|4\.6v|llava|internvl|minicpm|glm-4v|step-1v|spark|doubao|hunyuan|qwen3-vl|qwen2\.5-vl)/i.test(vm) ||
+      /(^|[^a-z])(4o|4\.1|4\.5|o1|o3|o4|o5|claude|gemini|gpt-5)/i.test(vm) ||
+      /(^|[^a-z])v$/.test(vm)
+    ) {
+      check("visionModel 应为视觉模型", true, `visionModel=${vm}`);
+    } else {
+      warn("visionModel 名称不像视觉模型", `visionModel=${vm} 缺少 VL/vision/4v 等标记，纯文本模型无法识图。硅基流动建议 Qwen/Qwen2.5-VL-7B-Instruct，智谱建议 glm-4.6v。确为视觉模型可忽略此警告，以「带图端到端」实测为准。`);
+    }
   } catch (e) {
     check("config.json 可解析", false, `解析失败：${e.message}`);
   }
@@ -189,8 +210,10 @@ if (catPath && existsSync(catPath)) {
 console.log("\n" + "=".repeat(62));
 const fails = results.filter((r) => r.ok === false);
 const passes = results.filter((r) => r.ok === true);
-const skips = results.filter((r) => r.ok === null);
-console.log(`体检结果：PASS ${passes.length} / FAIL ${fails.length} / SKIP ${skips.length}`);
+const warns = results.filter((r) => r.warn);
+const skips = results.filter((r) => r.ok === null && !r.warn);
+console.log(`体检结果：PASS ${passes.length} / FAIL ${fails.length} / SKIP ${skips.length}${warns.length ? ` / WARN ${warns.length}` : ""}`);
+if (warns.length) console.log(`⚠️ 有 ${warns.length} 项警告：不影响交付判定，但请核对提示内容。`);
 if (fails.length === 0) {
   console.log("🎉 全部通过！可以交付：客户端 base_url 已指向 bridge（若第 6 项被跳过，请确认客户端配置）。");
   process.exit(0);
