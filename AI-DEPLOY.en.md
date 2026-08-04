@@ -5,7 +5,7 @@
 This file is a **one-click deployment SOP** for an **AI coding assistant** (Codex / Claude Code / Cursor / Tongyi Lingma / Copilot, or any AI that can run commands). Anyone can send this repository together with a single sentence to an AI, and the AI follows this file to complete the whole flow with 100% reliability:
 **clone → import skill → configure vision model → health check → hand off**.
 
-**Current version: 1.2.0 (2026-08-04).**
+**Current version: 1.2.1 (2026-08-04).**
 
 **Iron rule: every step must produce verifiable output; if any step FAILs, fix it and re-run — you may hand off only when everything PASSes. Skipping steps and claiming success is forbidden.**
 
@@ -135,6 +135,14 @@ node scripts/start-bridge.mjs
 
 > Advanced usage, most users do not need this.
 
+**Codex + CC Switch routing rules (mandatory):**
+
+- Codex `base_url` must be `http://127.0.0.1:57399/v1`.
+- Put the CC Switch address (usually `http://127.0.0.1:15721`) in the Bridge `upstream` setting.
+- Do not point Codex directly at `15721`: CC Switch can return `MODEL_CAPABILITY_NOT_SUPPORTED` before the image reaches the Bridge.
+- The Bridge watches Codex `config.toml` and restores `57399` if a CC Switch provider switch overwrites `base_url`. Switching providers may restart routing and disconnect the current chat; wait for the repair and retry, restarting Codex if needed.
+- The Bridge converts images to text for the upstream model; it cannot turn an upstream text-only model into a native multimodal model.
+
 ---
 
 ## User doesn'\''t want to give Key to AI? Self-service deployment
@@ -169,13 +177,18 @@ node scripts/install-skill.mjs   # fully interactive, user types Key, AI never s
 - Check skill directory: `ls ~/.codex/skills/auto-vision-bridge/` should have SKILL.md, scripts/, etc.
 - Run `node scripts/doctor.mjs --test` to verify config.
 
-### Q5: Want to change vision provider / change Key
+### Q5: After switching models Codex still says “vision is not supported”
+- Confirm Codex `config.toml` still uses `http://127.0.0.1:57399/v1`; do not use CC Switch's direct `http://127.0.0.1:15721/v1`.
+- Confirm the Bridge is running with `http://127.0.0.1:57399/health`.
+- A CC Switch provider switch may disconnect the current chat; wait for the Bridge to restore the entry point, restart Codex, and send the image again.
+
+### Q6: Want to change vision provider / change Key
 ```bash
 cd ~/.codex/skills/auto-vision-bridge
 node scripts/setup.mjs   # re-configure, auto-backups old config.json
 ```
 
-### Q6: Upgrade skill (pull new version from repo)
+### Q7: Upgrade skill (pull new version from repo)
 ```bash
 cd /path/to/auto-vision-bridge   # original clone folder
 git pull
@@ -183,7 +196,7 @@ node scripts/install-skill.mjs --force   # force overwrite with new version
 ```
 
 
-### Q7: The user no longer wants vision support
+### Q8: The user no longer wants vision support
 
 When the user explicitly sends “I want to uninstall”, “uninstall vision”, “turn off vision”, or an equivalent request in the current chat, do not restart configuration. Run:
 

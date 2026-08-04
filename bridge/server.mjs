@@ -14,7 +14,7 @@
 import http from "node:http";
 import { createHash } from "node:crypto";
 import { appendFileSync, readFileSync } from "node:fs";
-import { join, dirname, isAbsolute } from "node:path";
+import { join, dirname, isAbsolute, basename } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { watch, writeFileSync } from "node:fs";
@@ -22,6 +22,7 @@ import os from "node:os";
 
 // 统一配置模块
 import { getBridgeConfig, reloadConfig, watchConfig } from "./config.mjs";
+import { ensureBaseUrl } from "./codex-config.mjs";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 
@@ -65,9 +66,70 @@ function sanitizeModelName(raw) {
   return s;
 }
 
-function fixConfigToml() {
+function codexConfigPath() {
   const home = process.env.CODEX_HOME || join(os.homedir(), ".codex");
-  const tomlPath = join(home, "config.toml");
+  return join(home, "config.toml");
+}
+
+function codexBridgeUrl() {
+  const host = cfg.listen === "0.0.0.0" || cfg.listen === "::" ? "127.0.0.1" : cfg.listen;
+  return `http://${host}:${cfg.port}/v1`;
+}
+
+function enforceCodexBridgeBaseUrl(silent = false) {
+  const tomlPath = codexConfigPath();
+  let text;
+  try {
+    text = readFileSync(tomlPath, "utf8");
+  } catch (e) {
+    if (!silent) log(`[config接线] 跳过读取 ${tomlPath}：${e.message}`);
+    return false;
+  }
+
+  const target = codexBridgeUrl();
+  const result = ensureBaseUrl(text, target);
+  if (!result.found || !result.changed) return false;
+
+  try {
+    writeFileSync(tomlPath, result.text, "utf8");
+    log(`[config接线] 已将 Codex base_url 指向 bridge（${target}）；未记录原地址`);
+    return true;
+  } catch (e) {
+    log(`[config接线] 写回失败：${e.message}`);
+    return false;
+  }
+}
+
+let codexConfigTimer = null;
+let codexConfigWatcher = null;
+let codexConfigPoller = null;
+function scheduleCodexConfigRepair() {
+  clearTimeout(codexConfigTimer);
+  codexConfigTimer = setTimeout(() => {
+    fixConfigToml();
+    enforceCodexBridgeBaseUrl(true);
+  }, 250);
+}
+
+function watchCodexConfig() {
+  const tomlPath = codexConfigPath();
+  try {
+    codexConfigWatcher = watch(dirname(tomlPath), { persistent: false }, (_event, filename) => {
+      if (!filename || basename(String(filename)).toLowerCase() === basename(tomlPath).toLowerCase()) {
+        scheduleCodexConfigRepair();
+      }
+    });
+    log(`[config接线] 已监听 ${tomlPath}，CC Switch 切换模型后自动恢复 bridge 入口`);
+    // CC Switch 可能通过“写临时文件再原子替换”的方式更新 config.toml，
+    // 这类更新在 Windows 上不保证触发原文件的 fs.watch，因此保留低频兜底轮询。
+    codexConfigPoller = setInterval(() => enforceCodexBridgeBaseUrl(true), 1000);
+  } catch (e) {
+    log(`[config接线] 监听失败（不影响主服务）：${e.message}`);
+  }
+}
+
+function fixConfigToml() {
+  const tomlPath = codexConfigPath();
   let text;
   try {
     text = readFileSync(tomlPath, "utf8");
@@ -811,8 +873,10 @@ server.listen(cfg.port, cfg.listen, () => {
   log(`vision-bridge 已启动：http://${cfg.listen}:${cfg.port} -> 上游 ${cfg.upstream}`);
 });
 
-// 启动即修复一次模型目录，并监听后续被 cc-switch 等工具覆盖的情况
+// 启动即修复一次客户端接线和模型目录，并监听后续被 cc-switch 等工具覆盖的情况
 fixConfigToml();
+enforceCodexBridgeBaseUrl(false);
+watchCodexConfig();
 fixModelCatalog(false);
 try {
   watch(codexCatalogPath(), { persistent: false }, (evt) => {
@@ -824,6 +888,9 @@ try {
 }
 
 function shutdown() {
+  if (codexConfigTimer) clearTimeout(codexConfigTimer);
+  if (codexConfigWatcher) codexConfigWatcher.close();
+  if (codexConfigPoller) clearInterval(codexConfigPoller);
   log("vision-bridge 退出");
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 1000).unref();

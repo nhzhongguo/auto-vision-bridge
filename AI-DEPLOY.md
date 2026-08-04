@@ -6,7 +6,7 @@
 **一键部署 SOP**。任何人都可以把这个仓库连同一句话发给 AI，AI 按本文件就能 100% 完成：
 **克隆 → 导入技能 → 从内置目录选择视觉模型 → 配置 → 安全体检 → 交付**。
 
-**当前版本：1.2.0（2026-08-04）。**
+**当前版本：1.2.1（2026-08-04）。**
 
 **铁律：每一步都必须有可验证的输出；任何一步 FAIL 必须修复后重跑，全部 PASS 才能交付。禁止跳过任何一步直接宣称成功。**
 
@@ -170,13 +170,18 @@ node scripts/install-skill.mjs   # 全程交互，Key 自己输，AI 看不到
 - 检查技能目录：`ls ~/.codex/skills/auto-vision-bridge/` 应有 SKILL.md、scripts/ 等。
 - 运行 `node scripts/doctor.mjs --test` 确认配置正常。
 
-### Q5: 想换视觉服务商 / 换 Key
+### Q5: 切换模型后又报「当前模型不支持 vision」
+- 确认 Codex `config.toml` 的 `base_url` 仍为 `http://127.0.0.1:57399/v1`，不要直接填 CC Switch 的 `http://127.0.0.1:15721/v1`。
+- 确认 Bridge 仍在运行并检查 `http://127.0.0.1:57399/health`。
+- CC Switch 切换供应商可能导致当前会话断开；等待 Bridge 自动恢复入口后，重启 Codex 并重新发送图片。
+
+### Q6: 想换视觉服务商 / 换 Key
 ```bash
 cd ~/.codex/skills/auto-vision-bridge
 node scripts/setup.mjs   # 重新配置，会自动备份旧 config.json
 ```
 
-### Q6: 升级技能（拉取仓库新版本）
+### Q7: 升级技能（拉取仓库新版本）
 ```bash
 cd /path/to/auto-vision-bridge   # 原克隆目录
 git pull
@@ -184,7 +189,7 @@ node scripts/install-skill.mjs --force   # 强制覆盖安装新版
 ```
 
 
-### Q7：用户不想继续使用视觉功能
+### Q8：用户不想继续使用视觉功能
 
 当用户在当前对话明确发送“我要卸载”“卸载视觉”“关闭视觉功能”等请求时，AI 不要再次进入配置流程，直接执行：
 

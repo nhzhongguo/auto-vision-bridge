@@ -10,7 +10,7 @@
 
 ---
 
-> **Current version: 1.2.0 (2026-08-04)**
+> **Current version: 1.2.1 (2026-08-04)**
 > Recommended workflow: use Codex skill mode. The wizard lists only registered vision models and warns about free-tier, paid, and unknown-price testing.
 
 ## Current recommendation: skill mode and one-click uninstall
@@ -198,6 +198,8 @@ wire_api = "responses"
 **Any OpenAI-compatible client**: set `base_url` to `http://127.0.0.1:57399/v1`; `api_key` can be anything (e.g., `bridge`).
 
 > From now on, just send images: **non-vision model → image auto-converted to text; vision model → passed through as-is.** Nothing else to manage.
+
+> **Codex / CC Switch note (transparent proxy mode):** Codex must point `base_url` to `http://127.0.0.1:57399/v1`; the Bridge's `upstream` then points to CC Switch (usually `http://127.0.0.1:15721`). If Codex points directly to `15721`, CC Switch rejects the image before it reaches the Bridge with “the current model does not support vision.” The Bridge watches `config.toml` and restores its own entry when a CC Switch provider switch overwrites `base_url`. Switching providers may restart routing and disconnect the current chat; wait for the repair and retry, restarting Codex if needed.
 
 ---
 
