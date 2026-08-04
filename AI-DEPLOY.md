@@ -4,7 +4,9 @@
 
 本文件是给 **AI 编程助手**（Codex / Claude Code / Cursor / 通义灵码 / Copilot 等能执行命令的 AI）执行的
 **一键部署 SOP**。任何人都可以把这个仓库连同一句话发给 AI，AI 按本文件就能 100% 完成：
-**部署 → 逐项询问 → 写配置 → 启动 → 体检 → 客户端接线 → 交付**。
+**克隆 → 导入技能 → 从内置目录选择视觉模型 → 配置 → 安全体检 → 交付**。
+
+**当前版本：1.2.0（2026-08-04）。**
 
 **铁律：每一步都必须有可验证的输出；任何一步 FAIL 必须修复后重跑，全部 PASS 才能交付。禁止跳过任何一步直接宣称成功。**
 
@@ -14,33 +16,34 @@
 
 > 请克隆并部署这个仓库：**`https://github.com/nhzhongguo/auto-vision-bridge`**
 > 部署前先确认我是否同意部署；我同意后，按仓库根目录 `AI-DEPLOY.md` 的「部署指令」严格执行，
-> 过程中需要询问我的配置项（视觉模型、API Key、上游地址、我用的客户端、客户端当前 base_url）都列出来让我选/填，
+> 过程中需要询问我的配置项（**视觉模型服务商、API Key**）都列出来让我选/填，
 > 每一步的验证输出都贴给我看。
 
 ---
 
 ## 铁律（AI 必须遵守）
 
-1. **分层测试，先上游、再 bridge、最后客户端**：先确认上游能通，再确认 bridge 能识图，最后才改客户端配置。
-2. **Key 只写进 `bridge/config.json`**（已在 .gitignore）：禁止写进任何会被 git 追踪的文件，禁止贴到聊天里。
-3. **`doctor.mjs` 全 PASS 才算部署成功**：FAIL 必须修复后重跑，禁止带病交付。
-4. **改任何现有文件前先备份**：`config.json` → `config.json.bak`；`config.toml` → `config.toml.bak-<时间戳>`。
-5. **交付前必须让用户自己复测一次**：重启客户端 + 发一张图，用户确认能答对才算完成。
+1. **技能模式优先**：默认走「技能一键部署」（`install-skill.mjs`），无需常驻服务、无需改 base_url、无需上游地址。
+2. **Key 只写进技能目录 `scripts/config.json`**（已在 .gitignore）：禁止写进任何会被 git 追踪的文件，禁止贴到聊天里。
+3. **`doctor.mjs --test` 全 PASS 才算部署成功**：FAIL 必须修复后重跑，禁止带病交付。
+4. **改任何现有文件前先备份**：`config.json` → `config.json.bak`。
+5. **交付前必须让用户自己复测一次**：在 Codex 里发一张图给不支持视觉的模型，确认能答对才算完成。
+6. **明确卸载请求必须立即执行卸载**：用户发送“我要卸载”“卸载视觉”或等价请求时，直接运行 `node scripts/uninstall.mjs --yes`，不要继续测试或输出 API Key。
 
 ---
 
 ## 部署指令
 
-### 第 0 步：环境检查（不满足就装好再继续）
+### 第 0 步：环境检查
 
 ```bash
 node -v        # 期望 >= 18（https://nodejs.org）
 git --version  # 需要 git
 ```
 
-AI 记录实际输出；不满足则先安装，重跑本步，拿到满足版本的输出再继续。
+AI 记录实际输出；不满足则先安装，重跑本步。
 
-### 第 1 步：克隆仓库到稳定目录
+### 第 1 步：克隆仓库
 
 ```bash
 git clone https://github.com/nhzhongguo/auto-vision-bridge.git
@@ -48,221 +51,194 @@ cd auto-vision-bridge
 git log -1 --oneline   # 确认克隆成功，记录 commit 号
 ```
 
-- Bridge 模式**零依赖**，不需要 `npm install`（MCP 模式才需要，可选）。
-- ⚠️ 告诉用户：**这个文件夹以后不要移动、不要删除**，bridge 的端口和路径一旦变化客户端就连不上。
+- 零依赖，不需要 `npm install`。
+- ⚠️ 克隆目录以后不要移动、不要删除（技能会被安装到 `~/.codex/skills/`，但仓库目录用于更新/重装）。
 
-### 第 2 步：逐项询问用户（AI 不许替用户决定）
+### 第 2 步：一键部署技能（核心步骤）
 
+```bash
+node scripts/install-skill.mjs
+```
+
+**这条命令全自动完成：**
+1. 技能复制到 `~/.codex/skills/auto-vision-bridge/`
+2. 交互式选择视觉服务商，并只显示该服务商内置的视觉模型
+3. 显示免费额度/可能计费/价格未知提示；付费或未知价格模型默认不联网测试
+4. 静默输入 API Key（不回显，只写本地 `config.json`）
+5. 免费档模型才默认用 1×1 测试图验证；其他模型需用户明确确认
+6. 运行 `doctor.mjs --test` 端到端体检（付费/未知价格模型默认安全跳过）
+7. 输出「下一步」提示
+
+**AI 需要逐项询问用户（服务商和模型由目录辅助选择，Key 仍需用户提供）：**
 1. **视觉模型服务商**
    - 1) 智谱 BigModel `glm-4.6v`（推荐，注册送 600 万 tokens：https://open.bigmodel.cn → API Keys）
    - 2) 硅基流动 `Qwen2.5-VL-7B`（注册送 2000 万 tokens：https://cloud.siliconflow.cn）
-   - 3) 自定义 OpenAI 兼容视觉端点
-2. **视觉服务的 API Key**（要求用户提供；承诺只存本地 `bridge/config.json`，不进 git、不发给任何人）
-3. **上游大模型中转地址**（默认 `http://127.0.0.1:57321`，即用户现在模型请求打到的地址，**不带 `/v1`**）
-4. **用户用的 AI 客户端是什么？**
-   - Codex 桌面版（Windows 的 `%USERPROFILE%\.codex\config.toml` + cc-switch 模型目录）→ 第 6A 节
-   - 其他 OpenAI 兼容客户端（NextChat / Cherry Studio / ChatBox / 自建接口）→ 第 6B 节
-   - 不确定 → AI 先自己查（读配置文件、看进程），查不到再问用户
-5. **客户端当前 `base_url` 和模型名**：AI 先读配置，读不到再问用户（Codex: `config.toml` 的 `base_url` / `model`；其他客户端：让用户截图设置页）
+   - 3) OpenRouter `:free` 模型
+   - 4) 自定义 OpenAI 兼容视觉端点
+2. **视觉服务的 API Key**（承诺只存本地 `~/.codex/skills/auto-vision-bridge/scripts/config.json`，不进 git、不发给任何人）
 
-### 第 3 步：写 bridge 配置（Key 不进 git）
+> ⚠️ **计费安全**：免费只表示当前目录标注的免费额度/免费档，不保证永久免费；价格未知或可能计费的模型默认不测试。联网验证前必须向用户说明可能扣费。
+>
+> ⚠️ **不需要再问**：上游中转地址、客户端类型、base_url —— 技能模式完全不需要这些。
 
-**优先用交互式向导**（用户可自己输 Key，AI 全程看不到 Key）：
-```bash
-node scripts/setup.mjs
+### 第 3 步：验证体检输出
+
+安装脚本会自动跑 `doctor.mjs --test`。如果选择免费档，AI 把完整输出贴给用户看并确认实测成功；如果选择付费或价格未知模型，看到 `WARN ... 已跳过` 是预期的安全行为，不能把它当成失败。
+
+```
+PASS Node.js >= 18
+PASS config.json 存在
+PASS config.json 可解析
+PASS 视觉 API Key 已配置
+PASS 视觉 API 地址已配置
+PASS 视觉模型已配置
+PASS 模型看起来支持视觉
+PASS 模型计费标记 - 免费额度/免费档（仍可能限流或耗尽额度）
+PASS 视觉模型实测可用
+
+体检结果：FAIL 0，PASS 9
 ```
 
-AI 代写时（用户已把 Key 给 AI 的情况）：
+有任何 FAIL → 告诉用户原因 → 让用户修复（如换 Key、换模型）→ 重跑 `node scripts/doctor.mjs --test`。若是计费风险 WARN，不要为了“全 PASS”强行发请求；只有用户明确同意后才使用 `node scripts/doctor.mjs --test --force`。
+
+### 第 4 步：交付说明（贴给用户）
+
+技能已安装到：`~/.codex/skills/auto-vision-bridge/`
+
+**以后遇到不支持视觉的模型（DeepSeek、Kimi、GLM 文本版等）收到图片时：**
+- Codex 会**自动调用技能**把图片识别成文字
+- 再用当前模型正常回答
+- **无需启动服务、无需改 base_url、无需配置上游地址**
+
+**如需手动测试识图：**
 ```bash
-# Windows:
-Copy-Item bridge/config.example.json bridge/config.json -Force
-# macOS / Linux:
-cp bridge/config.example.json bridge/config.json
-```
-已有 `bridge/config.json` 时**先备份**再覆盖（`config.json.bak`）。只改这几个字段：
-- `upstream`：用户的中转地址（不带 `/v1`）
-- `port`：默认 `57399`（被占用就换端口，**全文档所有 57399 同步替换**）
-- `zhipuApiKey`：用户的视觉 Key
-- `visionModel` / `visionBaseUrl`：用户选的服务商
-
-写完后必须验证：
-1. `Get-Content bridge/config.json`（PowerShell）/ `cat bridge/config.json`：能看到 Key 已写入（输出可打码，如 `d954...tPb9`）
-2. `git status`：`bridge/config.json` **不在**变更列表里（.gitignore 已忽略，Key 不会进 git）
-
-### 第 4 步：启动 bridge + 开机自启
-
-```bash
-# Windows（隐藏窗口启动，重复执行会自动跳过）
-powershell -ExecutionPolicy Bypass -File bridge/start-bridge.ps1
-# macOS / Linux
-node bridge/server.mjs &
+cd ~/.codex/skills/auto-vision-bridge
+node scripts/analyze_image.mjs --image "图片路径" --prompt "你的问题"
 ```
 
-启动后**立刻验证**：
-```bash
-curl http://127.0.0.1:57399/health
-# 期望返回 {"ok":true,"service":"vision-bridge",...}
+**配置文件位置（API Key 只存这里，不进 git）：**
 ```
-
-开机自启（建议，可选）：
-- **Windows（计划任务，隐藏窗口）**：
-  ```powershell
-  $dir = (Get-Location).Path
-  $action = New-ScheduledTaskAction -Execute "powershell" -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$dir\bridge\start-bridge.ps1`""
-  $trigger = New-ScheduledTaskTrigger -AtStartup
-  Register-ScheduledTask -TaskName "AutoVisionBridge" -Action $action -Trigger $trigger -Force
-  ```
-- **Linux（systemd）**：
-  ```ini
-  [Unit]
-  Description=Auto Vision Bridge
-  After=network.target
-  [Service]
-  ExecStart=/usr/bin/node /绝对路径/auto-vision-bridge/bridge/server.mjs
-  Restart=always
-  [Install]
-  WantedBy=multi-user.target
-  ```
-- 或 pm2：`pm2 start bridge/server.mjs --name vision-bridge && pm2 save && pm2 startup`
-
-### 第 5 步：端到端体检（**强制门槛，FAIL 不许交付**）
-
-```bash
-node bridge/doctor.mjs
-# 期望输出：全部 PASS，FAIL 0，退出码 0
-# 若 bridge 是独立实例（例如从别的目录启动的）：
-node bridge/doctor.mjs --config <实例目录>/config.json
+~/.codex/skills/auto-vision-bridge/scripts/config.json
 ```
-
-体检项一览：
-
-| 检查项 | FAIL 的常见原因与修法 |
-|---|---|
-| Node.js >= 18 | 装 Node，重开终端 |
-| config.json 可解析 / Key 已配置 / upstream 已配置 | 重做第 3 步 |
-| /health 可达 | bridge 没启动：重跑第 4 步，看启动报错 |
-| 带图端到端（识图转文字） | Key 无效（重跑 setup.mjs --test）或上游没这个模型（--model 换上游真实模型名） |
-| 无图透传 | 上游挂了：先直测上游（见常见问题 Q4） |
-| 客户端 base_url 指向 bridge | **最常犯**：按第 6 步改 config.toml 并重启客户端 |
-| 模型目录放行图片输入 | bridge 启动时自动修（日志 [catalog修复]）；没有就重启 bridge |
-
-再跑一次**真实图片**端到端（强烈建议）：
-```bash
-node bridge/test-bridge.mjs --image <用户的一张真实截图路径> --model <上游真实模型名>
-# 期望：第 1 项「自动识别 ✅」、第 3 项「透传 ✅」，最后输出「🎉 全部通过」
-```
-
-### 第 6 步：把客户端接到 bridge（**漏了必报错，最核心的一步**）
-
-#### 6A. Codex 桌面版（含 cc-switch）
-
-1. 编辑 `C:\Users\<用户名>\.codex\config.toml`（**先备份** `config.toml.bak-<时间戳>`），把 provider 段的 `base_url` 指向 bridge：
-   ```toml
-   [model_providers.custom]
-   base_url = "http://127.0.0.1:57399/v1"   # 原来是 57321 或官方地址，必须改成 bridge
-   ```
-   （若用户用的是别的 provider 段名，同样处理，只改 base_url）
-2. 确认模型目录已放行图片：bridge 启动时会自动给 `cc-switch-model-catalog.json` 补
-   `input_modalities: ["text","image"]`（日志 `[catalog修复]`）。AI 手动确认当前模型已含 `image`；没有就重启 bridge 让它自动修。
-3. **重启 Codex 应用**（配置只在会话启动时读取，不重启不生效）。
-4. 复测：让用户在新会话里发一张图。
-
-#### 6B. 其他 OpenAI 兼容客户端
-
-1. 模型设置里把 API 地址（base_url）改为 `http://127.0.0.1:57399/v1`，API Key 随便填或填视觉 Key。
-2. 模型名填**上游真实模型名**（如 `deepseek-v4-flash`）。
-3. 若客户端**连发图按钮都不给点**（前端按模型名硬拦截）→ 见常见问题 Q3（modelAliases 换名方案）。
-4. 重启客户端，发图复测。
-
-### 第 7 步：交付清单（逐项打勾）
-
-- [ ] `doctor.mjs` 全部 PASS（把输出贴给用户看）
-- [ ] 用户重启客户端后，纯文字对话正常（透传零影响）
-- [ ] 用户发图后，收到基于图片内容的正确回答（自动识图生效）
-- [ ] 用户知道：① 仓库文件夹别删；② Key 在 `bridge/config.json`；③ 以后报「不支持该能力」先跑 `doctor.mjs`
-- [ ] 告知用户「复发时怎么办」（见常见问题 Q1/Q2 的一键修复命令）
 
 ---
 
-## 用户不想把 Key 发给 AI？自助配置
+## 可选：透明中转模式（bridge 常驻服务）
+
+如果用户**想要**所有请求自动拦截识图（不依赖 Codex 技能机制），可二次配置：
+
+```bash
+cd ~/.codex/skills/auto-vision-bridge
+node scripts/setup.mjs     # 重新配置，选择"是否启用透明中转模式" → y
+node scripts/start-bridge.mjs
+# 再把 Codex config.toml 的 base_url 改为 http://127.0.0.1:57399/v1 并重启客户端
+```
+
+> 这属于高级用法，普通用户不需要。
+
+---
+
+## 用户不想把 Key 发给 AI？自助部署
 
 ```bash
 cd auto-vision-bridge
-node scripts/setup.mjs        # 交互式：选服务商 → 静默输 Key → 自动备份 → 可选 1x1 验证
-node bridge/doctor.mjs        # 体检，全部 PASS 后按第 6 步改客户端 base_url 并重启
+node scripts/install-skill.mjs   # 全程交互，Key 自己输，AI 看不到
 ```
+
+---
 
 ## 常见问题（AI 排障速查）
 
-### Q1: 发图报「当前模型不支持该能力：vision」（MODEL_CAPABILITY_NOT_SUPPORTED）
+### Q1: body检 FAIL「视觉 API Key 已配置」
+- Key 为空或太短。重跑 `node scripts/setup.mjs` 重新输入。
 
-- **根因**：客户端的请求**没走 bridge**，直接打到了上游中转/代理，上游按模型能力拦截了带图请求。
-  最常见：`base_url` 被切回了 `57321`（cc-switch 切模型等操作会重写 config.toml）。
-- **排查**：`node bridge/doctor.mjs` → 第 6 项「客户端接线」FAIL 即此问题。
-- **修复**：
-  1. 把 `base_url` 改回 `http://127.0.0.1:57399/v1`（见第 6 步，PowerShell 一行版见下方）
-  2. 重启客户端
-  3. 重跑 `doctor.mjs` 直到第 6 项 PASS
-- **一键修复命令（Windows）**：
-  ```powershell
-  $f = "$env:USERPROFILE\.codex\config.toml"
-  (Get-Content $f -Raw) -replace 'http://127\.0\.0\.1:57321(/v1)', 'http://127.0.0.1:57399$1' | Set-Content $f -Encoding UTF8
-  ```
-- **预防**：切完模型后跑一次 `doctor.mjs`；FAIL 就重改 base_url。
+### Q2: 体检 FAIL「视觉模型实测可用」
+| HTTP | 原因 | 修复 |
+|------|------|------|
+| 401/403 | Key 无效/过期 | 去服务商控制台重新复制 Key |
+| 402 | 余额不足 | 充值，或换有免费额度的服务商（智谱/硅基流动） |
+| 429 | 限流 | 稍等重试，或换免费档模型 |
+| 400 | 模型名错误/不支持图片 | 改用视觉模型：`glm-4.6v`（智谱）或 `Qwen/Qwen2.5-VL-7B-Instruct`（硅基流动） |
+| 5xx | 服务商故障 | 稍后重试 |
 
-### Q2: 发图后模型答非所问 / 说没看到图
+### Q3: 体检 WARN「模型看起来支持视觉」
+- 配置的模型名不像视觉模型（缺少 vl/vision/4v 等标记）。
+- 确认模型确实支持图片输入可加 `--force` 跳过，但建议换确认可用的视觉模型。
 
-- 图没走到 bridge：`base_url` 没指 `57399`，或 bridge 没在运行。
-- 检查：`curl http://127.0.0.1:57399/health` → 然后 `node bridge/doctor.mjs`。
+### Q4: Codex 里发图仍报「不支持视觉」
+- 确认 Codex 已重启（技能只在启动时加载）。
+- 检查技能目录：`ls ~/.codex/skills/auto-vision-bridge/` 应有 SKILL.md、scripts/ 等。
+- 运行 `node scripts/doctor.mjs --test` 确认配置正常。
 
-### Q3: 客户端发图按钮都点不了（前端按模型名硬拦截）
+### Q5: 想换视觉服务商 / 换 Key
+```bash
+cd ~/.codex/skills/auto-vision-bridge
+node scripts/setup.mjs   # 重新配置，会自动备份旧 config.json
+```
 
-- 客户端把模型名换成视觉白名单名（如 `gpt-4o`），并在 `bridge/config.json` 加别名让 bridge 转回真实模型并**强制识图**：
-  ```json
-  "modelAliases": { "gpt-4o": "deepseek-v4-flash" }
-  ```
-  重启 bridge 后：客户端配模型 `gpt-4o` 发图 → bridge 收到 `gpt-4o` → 转成 `deepseek-v4-flash` + 强制调视觉模型识图 → 上游正常回答。
+### Q6: 升级技能（拉取仓库新版本）
+```bash
+cd /path/to/auto-vision-bridge   # 原克隆目录
+git pull
+node scripts/install-skill.mjs --force   # 强制覆盖安装新版
+```
 
-### Q4: 上游本身能不能通？（分层定位第一步）
 
-- 直接打上游（把 `<UPSTREAM>` 换成用户的中转地址）：
-  ```bash
-  curl <UPSTREAM>/v1/models
-  ```
-- 不通：问题在上游/中转，不在本项目；先让用户修好上游再继续。
+### Q7：用户不想继续使用视觉功能
 
-### Q5: /health 连不上
+当用户在当前对话明确发送“我要卸载”“卸载视觉”“关闭视觉功能”等请求时，AI 不要再次进入配置流程，直接执行：
 
-- bridge 没启动 / 端口被占 / 目录被移动。手动 `node bridge/server.mjs` 看报错；端口被占用就改 config.json 的 `port` 并同步改客户端 base_url。
+```bash
+cd ~/.codex/skills/auto-vision-bridge
+node scripts/uninstall.mjs --yes
+```
 
-### Q6: 视觉识别报 401/403/429
+脚本会停止已确认的本地 bridge，备份并还原 Codex `config.toml` 的 `base_url`，再把技能移动到 `~/.codex/skills/auto-vision-bridge-uninstall-backups/`。仓库源代码保留，之后可以重新 `git pull` 和安装。
 
-- Key 错 / 服务商限流。重跑 `node scripts/setup.mjs --test` 验证 Key；或换 `glm-4.6v` / 换服务商。
+如果只是预览影响范围，可先运行 `node scripts/uninstall.mjs --dry-run`。
 
-### Q7: 报「模型不可用 / invalid model」
+---
 
-- 上游没有这个模型名。bridge 只负责识图、**不负责换模型**，把客户端模型名改回上游支持的模型。
-
-### Q8: 报 `Cannot find module '...\bridge\test-bridge.mjs'`（MODULE_NOT_FOUND）
-
-- **根因**：在**仓库目录之外**运行了 `node bridge/...` 命令（Node 只会在当前目录下找 `bridge` 文件夹）。
-- **修复**：先 `cd` 进仓库目录再运行：
-  ```bash
-  cd auto-vision-bridge        # 改成你实际克隆到的目录
-  node bridge/test-bridge.mjs --image "图片的完整路径.png"
-  ```
-- `--image` 用完整绝对路径；路径含空格时用双引号包住；忘了克隆到哪可以先 `Get-ChildItem -Recurse -Filter test-bridge.mjs`（Windows）/ `find . -name test-bridge.mjs`（macOS/Linux）搜一下。
-### Q9: visionModel 配成了纯文本模型（如 `Qwen/Qwen3.5-9B`），识图失败
-
-- **根因**：`bridge/config.json` 的 `visionModel` 必须是**支持视觉的多模态模型**。纯文本模型（名字不带 VL/vision/4v 等标记，如 `Qwen/Qwen3.5-9B`）不能接收图片，识图请求会被服务商拒绝。
-- **排查**：`node bridge/doctor.mjs` → 出现 `⚠️ [WARN] visionModel 名称不像视觉模型` 即为此问题。
-- **修复**：把 `visionModel` 改成视觉模型并重启 bridge：
-  - 硅基流动：`Qwen/Qwen2.5-VL-7B-Instruct`（免费）或 `Qwen/Qwen2.5-VL-72B-Instruct` / `Qwen/Qwen3-VL-*`
-  - 智谱：`glm-4.6v`
-  - 或重跑 `node scripts/setup.mjs` 选服务商，自动填入正确默认值
-- **注意**：客户端用的模型名（如 `Qwen/Qwen3.5-9B`）可以是纯文本模型——bridge 会自动把图片转成文字再送过去；**只有 `visionModel` 必须是视觉模型**。
 ## 回滚（万一要还原）
 
-1. **配置**：恢复备份——`bridge/config.json.bak` 覆盖回 `bridge/config.json`；`config.toml.bak-*` 覆盖回 `config.toml`。
-2. **服务**：停掉 bridge（Windows：任务管理器结束 node.exe；Linux：`kill <PID>` 或 `pm2 stop vision-bridge`）。
-3. **客户端**：把 `base_url` 改回原值（备份文件里有），重启客户端即完全还原。
+1. **配置**：恢复备份——`config.json.bak` 覆盖回 `config.json`。
+2. **技能**：删除技能目录 `~/.codex/skills/auto-vision-bridge/`，重启 Codex 即完全还原。
+3. **如开启了 bridge**：停掉 bridge 进程，把 Codex `config.toml` 的 `base_url` 改回原值，重启客户端。
+
+---
+
+## 目录结构说明（给 AI 看的）
+
+```
+auto-vision-bridge/              ← 仓库根目录（克隆到这里）
+├── scripts/
+│   ├── install-skill.mjs        ← 一键部署入口（AI 运行这个）
+│   ├── setup.mjs                ← 交互式配置向导
+│   ├── doctor.mjs               ← 体检脚本
+│   ├── analyze_image.mjs        ← 手动识图工具
+│   ├── start-bridge.mjs         ← 启动透明中转（可选）
+│   ├── uninstall.mjs             ← 安全一键卸载与还原
+│   └── config.example.json      ← 配置模板
+├── references/
+│   └── providers.md             ← 服务商/模型清单
+├── assets/                      ← bridge 资源（可选模式用）
+├── agents/                      ← 代理配置示例
+├── SKILL.md                     ← Codex 技能定义（核心）
+├── .gitignore
+├── AI-DEPLOY.md                 ← 本文件
+└── README.md
+```
+
+技能安装后：
+```
+~/.codex/skills/auto-vision-bridge/
+├── SKILL.md
+├── .gitignore
+├── scripts/
+│   ├── config.json              ← 只有这里存 Key（gitignore）
+│   ├── config.example.json
+│   ├── setup.mjs / doctor.mjs / analyze_image.mjs / start-bridge.mjs
+├── references/
+├── assets/
+└── agents/
+```

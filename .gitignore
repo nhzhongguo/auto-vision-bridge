@@ -1,12 +1,17 @@
+# Dependencies and build output
 node_modules/
 dist/
-.env
-*.log
-.DS_Store
-mcp-configs.local/
 *.tsbuildinfo
 
-# 用户本地配置（含 API Key，不进 git）
+# Local secrets and runtime configuration
+config.json
 bridge/config.json
-bridge/*.bak
+scripts/config.json
+assets/bridge/config.json
+.env
+*.bak
 
+# Runtime logs and local state
+*.log
+.reasonix/
+npm-debug.log*

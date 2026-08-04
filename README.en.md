@@ -10,6 +10,27 @@
 
 ---
 
+> **Current version: 1.2.0 (2026-08-04)**
+> Recommended workflow: use Codex skill mode. The wizard lists only registered vision models and warns about free-tier, paid, and unknown-price testing.
+
+## Current recommendation: skill mode and one-click uninstall
+
+```powershell
+node scripts/install-skill.mjs
+```
+
+Skill mode does not require a resident bridge or a Codex `base_url` change. It installs the skill to `~/.codex/skills/auto-vision-bridge/`. Paid or unknown-price vision models are skipped by default during live tests to avoid surprise charges.
+
+If the user no longer wants vision support, explicitly send “I want to uninstall” or “uninstall vision” in the current chat so the AI runs the same safe uninstall flow. The manual command is:
+
+```powershell
+node scripts/uninstall.mjs --yes
+```
+
+Uninstall stops only a confirmed bridge, backs up and restores Codex `base_url`, and moves the installed skill to an uninstall-backup directory. It **does not delete the repository or print the API Key**.
+
+---
+
 ## What problem does it solve?
 
 Many models **don't support multimodal input**: when you paste a screenshot, they either error out or give nonsense answers.

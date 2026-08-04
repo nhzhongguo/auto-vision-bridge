@@ -1,0 +1,18 @@
+{
+  "provider": "zhipu",
+  "apiKey": "",
+  "baseUrl": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+  "model": "glm-4.6v",
+  "modelBilling": "free",
+  "modelBillingNote": "免费额度/免费档（可能限流或耗尽额度）",
+  "prompt": "请完整描述这张图片：可见文字（OCR）、主体、场景、布局、颜色。用中文回答。",
+  "maxTokens": 1024,
+  "maxDescChars": 4000,
+  "timeoutMs": 120000,
+  "bridge": {
+    "enabled": false,
+    "listen": "127.0.0.1",
+    "port": 57399,
+    "upstream": "http://127.0.0.1:57321"
+  }
+}
