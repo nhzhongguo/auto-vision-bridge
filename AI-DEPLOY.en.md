@@ -242,6 +242,15 @@ node bridge/doctor.mjs        # health check; after all PASS, change the client 
 
 - The upstream doesn't have this model name. The bridge only does image recognition, **it does not switch models** — change the client model name back to one the upstream supports.
 
+### Q8: "Cannot find module '...\bridge\test-bridge.mjs'" (MODULE_NOT_FOUND)
+
+- **Root cause**: the `node bridge/...` command was run **outside the repository folder** (Node only looks for the `bridge` folder under the current directory).
+- **Fix**: `cd` into the repo first, then re-run:
+  ```bash
+  cd auto-vision-bridge        # change to the actual folder you cloned into
+  node bridge/test-bridge.mjs --image "full/path/to/image.png"
+  ```
+- Use a full absolute path for `--image`; wrap it in quotes if it contains spaces. If you forgot where you cloned it, search for it with `Get-ChildItem -Recurse -Filter test-bridge.mjs` (Windows) / `find . -name test-bridge.mjs` (macOS/Linux).
 ## Rollback (just in case)
 
 1. **Config**: restore backups — `bridge/config.json.bak` back over `bridge/config.json`; `config.toml.bak-*` back over `config.toml`.

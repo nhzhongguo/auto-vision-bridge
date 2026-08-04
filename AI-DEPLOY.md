@@ -243,6 +243,15 @@ node bridge/doctor.mjs        # 体检，全部 PASS 后按第 6 步改客户端
 
 - 上游没有这个模型名。bridge 只负责识图、**不负责换模型**，把客户端模型名改回上游支持的模型。
 
+### Q8: 报 `Cannot find module '...\bridge\test-bridge.mjs'`（MODULE_NOT_FOUND）
+
+- **根因**：在**仓库目录之外**运行了 `node bridge/...` 命令（Node 只会在当前目录下找 `bridge` 文件夹）。
+- **修复**：先 `cd` 进仓库目录再运行：
+  ```bash
+  cd auto-vision-bridge        # 改成你实际克隆到的目录
+  node bridge/test-bridge.mjs --image "图片的完整路径.png"
+  ```
+- `--image` 用完整绝对路径；路径含空格时用双引号包住；忘了克隆到哪可以先 `Get-ChildItem -Recurse -Filter test-bridge.mjs`（Windows）/ `find . -name test-bridge.mjs`（macOS/Linux）搜一下。
 ## 回滚（万一要还原）
 
 1. **配置**：恢复备份——`bridge/config.json.bak` 覆盖回 `bridge/config.json`；`config.toml.bak-*` 覆盖回 `config.toml`。

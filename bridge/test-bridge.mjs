@@ -4,6 +4,7 @@
  * 用法：
  *   node test-bridge.mjs                        # 内置 1x1 测试图 + deepseek-v4-flash 模型
  *   node test-bridge.mjs --image 图.png --model deepseek-v4-flash --port 57399
+ * 注意：请在仓库目录内运行（先 cd 到 auto-vision-bridge 再执行 node bridge/...）。
  * 覆盖：
  *   1) 不支持视觉的模型 + 图片 -> 应自动转换（bridge 调视觉模型识别成文字，上游正常回答）
  *   2) 支持视觉的模型 + 图片 -> 应原样透传（不调用视觉 API，图片原样到达上游）
@@ -23,7 +24,20 @@ const IMG = arg("--image", "");
 // 1x1 红色 PNG（未指定 --image 时的回退测试图）
 const TINY_PNG_B64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
-const b64 = IMG ? readFileSync(IMG).toString("base64") : TINY_PNG_B64;
+let b64 = TINY_PNG_B64;
+if (IMG) {
+  try {
+    b64 = readFileSync(IMG).toString("base64");
+  } catch {
+    console.error(`❌ 找不到图片文件：${IMG}`);
+    console.error("   请检查：");
+    console.error("   1) 路径是否正确（推荐使用完整绝对路径，含空格时用双引号包住）；");
+    console.error("   2) 当前目录是否为仓库目录（应能看到 bridge/ 文件夹），示例：");
+    console.error('      cd auto-vision-bridge');
+    console.error('      node bridge/test-bridge.mjs --image "C:\\Users\\<用户名>\\图片\\demo.png"');
+    process.exit(1);
+  }
+}
 const dataUrl = `data:image/png;base64,${b64}`;
 
 const BRIDGE = `http://127.0.0.1:${PORT}`;
