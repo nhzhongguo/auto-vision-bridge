@@ -10,7 +10,7 @@
 
 ---
 
-> **Current version: 1.2.1 (2026-08-04)**
+> **Current version: 1.2.2 (2026-08-05)**
 > Recommended workflow: use Codex skill mode. The wizard lists only registered vision models and warns about free-tier, paid, and unknown-price testing.
 
 ## Current recommendation: skill mode and one-click uninstall
@@ -21,6 +21,14 @@ node scripts/install-skill.mjs
 
 Skill mode does not require a resident bridge or a Codex `base_url` change. It installs the skill to `~/.codex/skills/auto-vision-bridge/`. Paid or unknown-price vision models are skipped by default during live tests to avoid surprise charges.
 
+**One-click deployment for an AI assistant:** when the user already names the provider and vision model, preselect them so the wizard only asks for the API Key through its hidden prompt:
+
+```powershell
+node scripts/install-skill.mjs --provider zhipu --model glm-4.6v
+```
+
+Running `node scripts/install-skill.mjs` without flags is also fine. Skill mode needs only three inputs: **vision provider, a confirmed vision-capable model, and that provider's API Key**. It does not need an upstream URL, a CC Switch URL, or a `base_url` change.
+
 If the user no longer wants vision support, explicitly send “I want to uninstall” or “uninstall vision” in the current chat so the AI runs the same safe uninstall flow. The manual command is:
 
 ```powershell
@@ -28,6 +36,13 @@ node scripts/uninstall.mjs --yes
 ```
 
 Uninstall stops only a confirmed bridge, backs up and restores Codex `base_url`, and moves the installed skill to an uninstall-backup directory. It **does not delete the repository or print the API Key**.
+
+**Config file locations:**
+
+- Skill mode: `~/.codex/skills/auto-vision-bridge/scripts/config.json`
+- Transparent proxy mode: the same `scripts/config.json` is read by `scripts/start-bridge.mjs`, which generates/updates `bridge/config.json`
+
+If the user gives the provider, model, and Key to an AI, the AI must write the Key only to this local file; never echo it into chat, README files, or git.
 
 ---
 
@@ -62,7 +77,7 @@ Auto Vision Bridge is a **lightweight proxy layer** (reverse proxy) between your
 - 🖼️ **All three image channels**: Chat API (`image_url`), Responses API (`input_image`), Markdown images (`![](data:...)`)
 - ⚡ **Same-image cache**: identical images are never re-sent to the vision API (300-entry LRU)
 - 📢 **Call notice**: when the vision model is invoked, the chat window first shows “📷 detecting image with vision model…” instead of appearing stuck (`noticeEnabled` toggles it, `noticeText` customizes the message)
-- 🔐 **Key safety**: the vision API key lives only in local `bridge/config.json` (gitignored) — **never in git, never shared with anyone**
+- 🔐 **Key safety**: the vision API key lives only in the local skill `scripts/config.json` or transparent-proxy runtime config (both gitignored) — **never in git, never shared with anyone**
 - 🛠️ **Interactive setup wizard**: `node scripts/setup.mjs` — silent key entry (no echo), automatic backup of old config, optional 1×1 image key verification
 - 🚀 **AI one-click deployment**: send the repo URL to any AI coding assistant; it deploys → asks for config → writes the key → starts → verifies → delivers
 - 🎁 **Bonus MCP mode**: the same repo ships a standard MCP Server (`analyze_image` tool) with 7 providers and 20+ free vision models
@@ -312,6 +327,31 @@ Register-ScheduledTask -TaskName "AutoVisionBridge" -Action $action -Trigger $tr
 ---
 
 ## FAQ
+
+**Q: Can a user clone the repo and configure it from the chat in one step?**
+
+Yes. Run `node scripts/install-skill.mjs`. The AI only needs to confirm three items: vision provider, vision model, and API Key. If the user already chose the provider and model, use `--provider` and `--model`, for example:
+
+```powershell
+node scripts/install-skill.mjs --provider zhipu --model glm-4.6v
+```
+
+The wizard silently writes the Key to `~/.codex/skills/auto-vision-bridge/scripts/config.json` and runs the health check. It does not enable transparent proxy mode or change Codex `base_url` by default. Restart Codex after installation so the skill is loaded.
+
+**Q: Why can transparent proxy mode show “vision is not supported” after a CC Switch change?**
+
+Only transparent proxy mode uses `base_url`. The correct route is `Codex → http://127.0.0.1:57399/v1 → CC Switch (usually 15721) → upstream model`. Do not point Codex directly at `15721`. The Bridge restores an overwritten `base_url` after startup; switching providers may disconnect the current chat, so wait for recovery and reopen Codex if needed.
+
+**Q: Which file should a customer edit manually?**
+
+Usually none. To troubleshoot or change the vision model, edit:
+
+```text
+~/.codex/skills/auto-vision-bridge/scripts/config.json
+```
+
+Change `provider`, `model`, `baseUrl`, and `apiKey`, then run `node scripts/doctor.mjs --test`. Do not edit the example file or put the Key in a git-tracked file.
+
 
 | Symptom | Cause & fix |
 |---|---|

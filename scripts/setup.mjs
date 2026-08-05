@@ -23,7 +23,40 @@ const TINY_PNG_B64 =
 const DEFAULT_PROMPT =
   "请完整描述这张图片：可见文字（OCR）、主体、场景、布局、颜色。用中文回答。";
 
+const ARGV = process.argv.slice(2);
+const SKILL_MODE = ARGV.includes("--skill");
+const NO_BRIDGE_PROMPT = ARGV.includes("--no-bridge") || SKILL_MODE;
+const FORCE_BRIDGE = ARGV.includes("--bridge");
+const SKIP_TEST = ARGV.includes("--skip-test");
+const HELP = ARGV.includes("--help") || ARGV.includes("-h");
+const REQUESTED_PROVIDER = valueAfter("--provider");
+const REQUESTED_MODEL = valueAfter("--model");
+
+function valueAfter(flag) {
+  const index = ARGV.indexOf(flag);
+  return index >= 0 ? String(ARGV[index + 1] || "").trim() : "";
+}
+
 const rl = createInterface({ input: process.stdin, output: process.stdout });
+
+if (HELP) {
+  console.log(`用法：
+  node scripts/setup.mjs
+  node scripts/setup.mjs --skill --provider zhipu --model glm-4.6v
+
+参数：
+  --skill              技能模式：不启用 bridge，不修改 Codex base_url
+  --provider <id>      预选视觉服务商，省去服务商选择
+  --model <id>         预选已登记的视觉模型，省去模型选择
+  --bridge             直接启用透明中转模式
+  --no-bridge          不询问透明中转模式
+  --skip-test          保存配置但跳过联网测试
+  --help               显示帮助
+
+API Key 仍通过安全输入提示填写，不接受命令行参数，避免出现在历史记录中。`);
+  rl.close();
+  process.exit(0);
+}
 
 function ask(question, fallback = "") {
   return new Promise((resolve) => {
@@ -61,6 +94,7 @@ function detectLocalUpstream() {
     const m = toml.match(/^\s*base_url\s*=\s*["']([^"']+)["']/m);
     if (!m) return "";
     const url = m[1].replace(/\/+$/, "");
+    if (/^https?:\/\/127\.0\.0\.1:57399\/v1$/i.test(url)) return "";
     if (/^https?:\/\/127\.0\.0\.1:\d+\/v1$/i.test(url)) return url.slice(0, -3);
     if (/^https?:\/\/localhost:\d+\/v1$/i.test(url)) return url.slice(0, -3);
   } catch {}
@@ -73,36 +107,51 @@ function printBilling(model) {
   console.log(`    ${icon} ${billingLabel(model)}`);
 }
 
-function chooseProvider() {
-  return (async () => {
-    console.log("请选择视觉模型服务商：");
-    PROVIDERS.forEach((p, i) => {
-      const freeCount = p.models.filter((m) => m.billing === "free").length;
-      console.log(`  ${i + 1}) ${p.name} — ${p.models.length} 个内置视觉模型，${freeCount} 个免费档`);
-    });
-    console.log(`  ${PROVIDERS.length + 1}) 自定义 OpenAI 兼容端点 — 价格未知，默认按可能收费处理`);
-    const choice = await ask(`输入序号（1-${PROVIDERS.length + 1}，默认 1）：`, "1");
-    const n = Math.min(Math.max(parseInt(choice, 10) || 1, 1), PROVIDERS.length + 1);
-    if (n === PROVIDERS.length + 1) {
-      return {
-        id: "custom",
-        name: "自定义 OpenAI 兼容端点",
-        keyUrl: "由你的视觉服务商提供",
-        keyHint: "请确认端点支持 image_url 图片输入",
-        endpoint: "",
-        style: "openai",
-        models: [],
-        custom: true,
-      };
-    }
-    return PROVIDERS[n - 1];
-  })();
+function customProvider() {
+  return {
+    id: "custom",
+    name: "自定义 OpenAI 兼容端点",
+    keyUrl: "由你的视觉服务商提供",
+    keyHint: "请确认端点支持 image_url 图片输入",
+    endpoint: "",
+    style: "openai",
+    models: [],
+    custom: true,
+  };
+}
+
+function findProvider(value) {
+  const needle = String(value || "").trim().toLowerCase();
+  if (!needle) return null;
+  if (needle === "custom" || needle === "openai-compatible") return customProvider();
+  return PROVIDERS.find((p) => p.id.toLowerCase() === needle || p.name.toLowerCase() === needle) || null;
+}
+
+async function chooseProvider() {
+  const preset = findProvider(REQUESTED_PROVIDER);
+  if (REQUESTED_PROVIDER && !preset) {
+    throw new Error(`未找到视觉服务商“${REQUESTED_PROVIDER}”。可用 id：${PROVIDERS.map((p) => p.id).join(", ")}，或使用 custom。`);
+  }
+  if (preset) {
+    console.log(`已预选视觉服务商：${preset.name}`);
+    return preset;
+  }
+
+  console.log("请选择视觉模型服务商：");
+  PROVIDERS.forEach((p, i) => {
+    const freeCount = p.models.filter((m) => m.billing === "free").length;
+    console.log(`  ${i + 1}) ${p.name} — ${p.models.length} 个内置视觉模型，${freeCount} 个免费档`);
+  });
+  console.log(`  ${PROVIDERS.length + 1}) 自定义 OpenAI 兼容端点 — 价格未知，默认按可能收费处理`);
+  const choice = await ask(`输入序号（1-${PROVIDERS.length + 1}，默认 1）：`, "1");
+  const n = Math.min(Math.max(parseInt(choice, 10) || 1, 1), PROVIDERS.length + 1);
+  return n === PROVIDERS.length + 1 ? customProvider() : PROVIDERS[n - 1];
 }
 
 async function chooseModel(provider) {
   if (provider.custom) {
     const endpoint = await ask("输入 OpenAI 兼容端点 URL：");
-    const model = await ask("输入视觉模型名（只填支持图片的模型）：");
+    const model = REQUESTED_MODEL || await ask("输入视觉模型名（只填支持图片的模型）：");
     const looksVision = /(vl|vision|omni|multimodal|4v|4o|claude|gemini|llava|internvl|minicpm|flash)/i.test(model);
     if (!looksVision) {
       console.log("\n⚠️ 这个模型名不像视觉模型。为避免把纯文本模型拿来测试，本次将保存配置但跳过自动验证。");
@@ -114,6 +163,15 @@ async function chooseModel(provider) {
   }
 
   const models = provider.models.filter((m) => m.vision);
+  if (REQUESTED_MODEL) {
+    const selected = models.find((m) => m.id.toLowerCase() === REQUESTED_MODEL.toLowerCase());
+    if (!selected) {
+      throw new Error(`模型“${REQUESTED_MODEL}”不在 ${provider.name} 的视觉模型目录中。请使用 list_models 查看可用模型，或不要传 --model 让向导列出选项。`);
+    }
+    console.log(`已预选视觉模型：${selected.id}`);
+    return { model: selected, endpoint: provider.endpoint };
+  }
+
   console.log(`\n${provider.name}：只显示已登记的视觉模型（不会测试纯文本模型）`);
   models.forEach((m, i) => {
     const marker = m === getDefaultModel(provider) ? "（推荐）" : "";
@@ -200,6 +258,7 @@ async function main() {
   console.log("==============================================");
   console.log("  Auto Vision Bridge - 配置向导");
   console.log("  只选择视觉模型，并在测试前提示计费风险");
+  if (SKILL_MODE) console.log("  技能模式：不启动常驻服务、不修改 Codex base_url");
   console.log("==============================================\n");
 
   const provider = await chooseProvider();
@@ -229,16 +288,22 @@ async function main() {
     return;
   }
 
-  const useBridge = (await ask("\n是否同时启用透明中转模式（常驻 bridge，y/n，默认 n）：", "n")).toLowerCase();
+  const useBridge = FORCE_BRIDGE
+    ? "y"
+    : NO_BRIDGE_PROMPT
+      ? "n"
+      : (await ask("\n是否同时启用透明中转模式（常驻 bridge，y/n，默认 n）：", "n")).toLowerCase();
   const detectedUpstream = detectLocalUpstream();
   const bridge = {
     enabled: useBridge === "y" || useBridge === "yes",
     listen: "127.0.0.1",
     port: 57399,
-    upstream: detectedUpstream || "http://127.0.0.1:57321",
+    upstream: detectedUpstream || "http://127.0.0.1:15721",
   };
-  if (bridge.enabled) {
-    bridge.upstream = await ask(`大模型中转地址（不带 /v1，默认 ${bridge.upstream}）：`, bridge.upstream);
+  if (bridge.enabled && !SKILL_MODE) {
+    console.log(`透明中转将自动使用上游：${bridge.upstream}`);
+    const customUpstream = await ask("如需修改上游地址请输入（直接回车保持自动检测）：", "");
+    if (customUpstream) bridge.upstream = customUpstream;
     bridge.port = parseInt(await ask("监听端口（默认 57399）：", "57399"), 10) || 57399;
   }
 
@@ -264,8 +329,8 @@ async function main() {
   writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), "utf8");
   console.log("配置已写入 scripts/config.json");
 
-  let doTest = process.argv.includes("--test");
-  if (!doTest) {
+  let doTest = process.argv.includes("--test") && !SKIP_TEST;
+  if (!doTest && !SKIP_TEST) {
     const defaultTest = model.billing === "free" ? "y" : "n";
     const yn = (await ask(`\n是否立即验证已选择的视觉模型？(y/n，默认 ${defaultTest})：`, defaultTest)).toLowerCase();
     doTest = yn === "y" || yn === "yes";

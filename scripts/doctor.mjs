@@ -52,8 +52,8 @@ const providerId = cfg.provider || cfg.visionProvider || "";
 const provider = getProvider(providerId);
 const modelBilling = cfg.modelBilling || cfg.visionModelBilling || "unknown";
 const modelBillingNote = cfg.modelBillingNote || cfg.visionModelBillingNote || "未记录价格信息，按可能收费处理";
-const masked = key.length >= 8 ? `${key.slice(0, 4)}...${key.slice(-4)}` : "(空)";
-check("视觉 API Key 已配置", key.length > 8, masked);
+const keyStatus = key.length > 8 ? "已配置（不显示 Key）" : "(空)";
+check("视觉 API Key 已配置", key.length > 8, keyStatus);
 check("视觉 API 地址已配置", /^https?:\/\//.test(baseUrl), baseUrl);
 check("视觉模型已配置", !!model, model);
 check(

@@ -6,7 +6,7 @@
 **一键部署 SOP**。任何人都可以把这个仓库连同一句话发给 AI，AI 按本文件就能 100% 完成：
 **克隆 → 导入技能 → 从内置目录选择视觉模型 → 配置 → 安全体检 → 交付**。
 
-**当前版本：1.2.1（2026-08-04）。**
+**当前版本：1.2.2（2026-08-05）。**
 
 **铁律：每一步都必须有可验证的输出；任何一步 FAIL 必须修复后重跑，全部 PASS 才能交付。禁止跳过任何一步直接宣称成功。**
 
@@ -60,9 +60,15 @@ git log -1 --oneline   # 确认克隆成功，记录 commit 号
 node scripts/install-skill.mjs
 ```
 
+如果用户已经明确指定服务商和视觉模型，AI 可以预选它们，减少交互步骤：
+
+```powershell
+node scripts/install-skill.mjs --provider zhipu --model glm-4.6v
+```
+
 **这条命令全自动完成：**
-1. 技能复制到 `~/.codex/skills/auto-vision-bridge/`
-2. 交互式选择视觉服务商，并只显示该服务商内置的视觉模型
+1. 技能复制到 `~/.codex/skills/auto-vision-bridge/`，升级时保留已有本地 `scripts/config.json`
+2. 交互式选择视觉服务商，并只显示该服务商内置的视觉模型（使用 `--provider`/`--model` 可预选）
 3. 显示免费额度/可能计费/价格未知提示；付费或未知价格模型默认不联网测试
 4. 静默输入 API Key（不回显，只写本地 `config.json`）
 5. 免费档模型才默认用 1×1 测试图验证；其他模型需用户明确确认
@@ -80,6 +86,8 @@ node scripts/install-skill.mjs
 > ⚠️ **计费安全**：免费只表示当前目录标注的免费额度/免费档，不保证永久免费；价格未知或可能计费的模型默认不测试。联网验证前必须向用户说明可能扣费。
 >
 > ⚠️ **不需要再问**：上游中转地址、客户端类型、base_url —— 技能模式完全不需要这些。
+
+> 技能模式最终只需要三项：视觉服务商、确认支持图片的视觉模型、该服务商 API Key。Key 只写入 `~/.codex/skills/auto-vision-bridge/scripts/config.json`，不得回显或提交。
 
 ### 第 3 步：验证体检输出
 
@@ -149,10 +157,15 @@ node scripts/install-skill.mjs   # 全程交互，Key 自己输，AI 看不到
 
 ## 常见问题（AI 排障速查）
 
-### Q1: body检 FAIL「视觉 API Key 已配置」
+### Q1: 用户问“我需要改哪个文件？”
+- 默认无需手改文件；运行 `node scripts/install-skill.mjs`，按提示输入服务商、视觉模型和 Key 即可。
+- 如果必须手动修改，只编辑：`~/.codex/skills/auto-vision-bridge/scripts/config.json`。
+- 修改后运行 `node scripts/doctor.mjs --test`，然后重启 Codex。
+
+### Q2: body检 FAIL「视觉 API Key 已配置」
 - Key 为空或太短。重跑 `node scripts/setup.mjs` 重新输入。
 
-### Q2: 体检 FAIL「视觉模型实测可用」
+### Q3: 体检 FAIL「视觉模型实测可用」
 | HTTP | 原因 | 修复 |
 |------|------|------|
 | 401/403 | Key 无效/过期 | 去服务商控制台重新复制 Key |
@@ -161,27 +174,27 @@ node scripts/install-skill.mjs   # 全程交互，Key 自己输，AI 看不到
 | 400 | 模型名错误/不支持图片 | 改用视觉模型：`glm-4.6v`（智谱）或 `Qwen/Qwen2.5-VL-7B-Instruct`（硅基流动） |
 | 5xx | 服务商故障 | 稍后重试 |
 
-### Q3: 体检 WARN「模型看起来支持视觉」
+### Q4: 体检 WARN「模型看起来支持视觉」
 - 配置的模型名不像视觉模型（缺少 vl/vision/4v 等标记）。
 - 确认模型确实支持图片输入可加 `--force` 跳过，但建议换确认可用的视觉模型。
 
-### Q4: Codex 里发图仍报「不支持视觉」
+### Q5: Codex 里发图仍报「不支持视觉」
 - 确认 Codex 已重启（技能只在启动时加载）。
 - 检查技能目录：`ls ~/.codex/skills/auto-vision-bridge/` 应有 SKILL.md、scripts/ 等。
 - 运行 `node scripts/doctor.mjs --test` 确认配置正常。
 
-### Q5: 切换模型后又报「当前模型不支持 vision」
+### Q6: 切换模型后又报「当前模型不支持 vision」
 - 确认 Codex `config.toml` 的 `base_url` 仍为 `http://127.0.0.1:57399/v1`，不要直接填 CC Switch 的 `http://127.0.0.1:15721/v1`。
 - 确认 Bridge 仍在运行并检查 `http://127.0.0.1:57399/health`。
 - CC Switch 切换供应商可能导致当前会话断开；等待 Bridge 自动恢复入口后，重启 Codex 并重新发送图片。
 
-### Q6: 想换视觉服务商 / 换 Key
+### Q7: 想换视觉服务商 / 换 Key
 ```bash
 cd ~/.codex/skills/auto-vision-bridge
 node scripts/setup.mjs   # 重新配置，会自动备份旧 config.json
 ```
 
-### Q7: 升级技能（拉取仓库新版本）
+### Q8: 升级技能（拉取仓库新版本）
 ```bash
 cd /path/to/auto-vision-bridge   # 原克隆目录
 git pull
@@ -189,7 +202,7 @@ node scripts/install-skill.mjs --force   # 强制覆盖安装新版
 ```
 
 
-### Q8：用户不想继续使用视觉功能
+### Q9：用户不想继续使用视觉功能
 
 当用户在当前对话明确发送“我要卸载”“卸载视觉”“关闭视觉功能”等请求时，AI 不要再次进入配置流程，直接执行：
 

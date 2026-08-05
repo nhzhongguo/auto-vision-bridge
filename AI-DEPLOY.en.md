@@ -5,7 +5,7 @@
 This file is a **one-click deployment SOP** for an **AI coding assistant** (Codex / Claude Code / Cursor / Tongyi Lingma / Copilot, or any AI that can run commands). Anyone can send this repository together with a single sentence to an AI, and the AI follows this file to complete the whole flow with 100% reliability:
 **clone → import skill → configure vision model → health check → hand off**.
 
-**Current version: 1.2.1 (2026-08-04).**
+**Current version: 1.2.2 (2026-08-05).**
 
 **Iron rule: every step must produce verifiable output; if any step FAILs, fix it and re-run — you may hand off only when everything PASSes. Skipping steps and claiming success is forbidden.**
 
@@ -59,9 +59,15 @@ git log -1 --oneline   # confirm the clone succeeded, record the commit hash
 node scripts/install-skill.mjs
 ```
 
+If the user already named the provider and vision model, preselect them to reduce the interaction:
+
+```powershell
+node scripts/install-skill.mjs --provider zhipu --model glm-4.6v
+```
+
 **This command fully automates:**
-1. Copies skill to `~/.codex/skills/auto-vision-bridge/`
-2. Interactive provider selection, showing only models marked as vision-capable in the built-in catalog
+1. Copies the skill to `~/.codex/skills/auto-vision-bridge/`, preserving the existing local `scripts/config.json` during upgrades
+2. Interactive provider selection, showing only models marked as vision-capable in the built-in catalog (or use `--provider`/`--model` to preselect)
 3. Shows free-tier / possibly-billed / unknown-price warnings; paid or unknown models are not tested by default
 4. Silent API Key input (no echo, only written to local `config.json`)
 5. Uses a 1×1 test image by default only for free-tier models; other models require explicit confirmation
@@ -79,6 +85,8 @@ node scripts/install-skill.mjs
 > ⚠️ **Billing safety**: “free” means only the current catalog marks a free tier/quota; it is not a promise of permanent free usage. Paid or unknown-price models are skipped by default. Warn the user about possible charges before any live test.
 >
 > ⚠️ **No need to ask**: upstream relay address, client type, base_url — skill mode does not need these at all.
+
+> Skill mode ultimately needs only three items: vision provider, a confirmed vision-capable model, and that provider API Key. The Key is written only to `~/.codex/skills/auto-vision-bridge/scripts/config.json`; never echo or commit it.
 
 ### Step 3: Verify health check output
 
@@ -156,10 +164,15 @@ node scripts/install-skill.mjs   # fully interactive, user types Key, AI never s
 
 ## Troubleshooting (AI quick reference)
 
-### Q1: Health check FAIL "Vision API Key configured"
+### Q1: The user asks “which file should I edit?”
+- Normally none; run `node scripts/install-skill.mjs` and enter the provider, vision model, and Key.
+- If manual editing is required, edit only `~/.codex/skills/auto-vision-bridge/scripts/config.json`.
+- Run `node scripts/doctor.mjs --test` after editing, then restart Codex.
+
+### Q2: Health check FAIL "Vision API Key configured"
 - Key empty or too short. Re-run `node scripts/setup.mjs` to re-enter.
 
-### Q2: Health check FAIL "Vision model live test OK"
+### Q3: Health check FAIL "Vision model live test OK"
 | HTTP | Cause | Fix |
 |------|-------|-----|
 | 401/403 | Key invalid/expired | Re-copy Key from provider console |
@@ -168,27 +181,27 @@ node scripts/install-skill.mjs   # fully interactive, user types Key, AI never s
 | 400 | Wrong model name / model does not support images | Use a vision model: `glm-4.6v` (Zhipu) or `Qwen/Qwen2.5-VL-7B-Instruct` (SiliconFlow) |
 | 5xx | Provider outage | Retry later |
 
-### Q3: Health check WARN "Model looks like a vision model"
+### Q4: Health check WARN "Model looks like a vision model"
 - Configured model name does not look like a vision model (missing vl/vision/4v markers).
 - If confirmed the model does support images, can use `--force` to skip, but recommended to switch to a confirmed vision model.
 
-### Q4: Codex still reports "vision not supported" when sending image
+### Q5: Codex still reports "vision not supported" when sending image
 - Confirm Codex has been restarted (skill loads only on startup).
 - Check skill directory: `ls ~/.codex/skills/auto-vision-bridge/` should have SKILL.md, scripts/, etc.
 - Run `node scripts/doctor.mjs --test` to verify config.
 
-### Q5: After switching models Codex still says “vision is not supported”
+### Q6: After switching models Codex still says “vision is not supported”
 - Confirm Codex `config.toml` still uses `http://127.0.0.1:57399/v1`; do not use CC Switch's direct `http://127.0.0.1:15721/v1`.
 - Confirm the Bridge is running with `http://127.0.0.1:57399/health`.
 - A CC Switch provider switch may disconnect the current chat; wait for the Bridge to restore the entry point, restart Codex, and send the image again.
 
-### Q6: Want to change vision provider / change Key
+### Q7: Want to change vision provider / change Key
 ```bash
 cd ~/.codex/skills/auto-vision-bridge
 node scripts/setup.mjs   # re-configure, auto-backups old config.json
 ```
 
-### Q7: Upgrade skill (pull new version from repo)
+### Q8: Upgrade skill (pull new version from repo)
 ```bash
 cd /path/to/auto-vision-bridge   # original clone folder
 git pull
@@ -196,7 +209,7 @@ node scripts/install-skill.mjs --force   # force overwrite with new version
 ```
 
 
-### Q8: The user no longer wants vision support
+### Q9: The user no longer wants vision support
 
 When the user explicitly sends “I want to uninstall”, “uninstall vision”, “turn off vision”, or an equivalent request in the current chat, do not restart configuration. Run:
 

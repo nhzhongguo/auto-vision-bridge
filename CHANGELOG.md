@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.2.2] - 2026-08-05
+
+### Fixed
+
+- 修复 `scripts/install-skill.mjs` 被错误保存为字面量换行，导致仓库拉取后“一键部署”实际不执行的问题。
+- 修复 `--yes` 误退出和覆盖安装删除本地 `scripts/config.json` 的问题；更新技能代码时保留本机配置。
+
+### Added
+
+- 一键安装支持 `--provider`、`--model` 预选参数，AI 只需向用户确认视觉服务商、视觉模型和 API Key。
+- `setup.mjs` 增加 `--skill`、`--skip-test`、`--bridge`、`--no-bridge` 和帮助信息。
+- 体检不再显示 API Key 的首尾片段。
+- README 增加客户一键部署、配置文件位置和 CC Switch 故障排查说明。
+
 ## [1.2.1] - 2026-08-04
 
 ### Fixed

@@ -8,7 +8,7 @@
 > 把任意**不支持视觉**的大模型（DeepSeek / Kimi / 文心 / GLM 文本版……）变成"能看图"的模型：
 > 你照常发截图 + 描述问题，剩下的交给 Bridge —— **模型支持视觉就原样透传，不支持就自动调视觉模型识别成文字**，全程无需手动操作。
 
-> **当前版本：1.2.1（2026-08-04）**
+> **当前版本：1.2.2（2026-08-05）**
 > 推荐优先使用 Codex 技能模式：向导只展示已登记的视觉模型，并在联网测试前提示免费/计费风险。
 
 ---
@@ -21,6 +21,14 @@ node scripts/install-skill.mjs
 
 技能模式不需要常驻 bridge、不需要修改 Codex `base_url`，会把视觉识别能力安装到 `~/.codex/skills/auto-vision-bridge/`。付费或价格未知的视觉模型默认跳过联网测试，避免用户在不知情时产生费用。
 
+**给 AI 助手的一键部署方式：**如果用户已经明确告诉你服务商和视觉模型，可以直接预选它们，向导只再安全询问 API Key：
+
+```powershell
+node scripts/install-skill.mjs --provider zhipu --model glm-4.6v
+```
+
+也可以只运行 `node scripts/install-skill.mjs`，由用户在目录中选择。默认技能模式只需要三项信息：**视觉服务商、明确支持图片的视觉模型、该服务商 API Key**；不需要上游地址、不需要 CC Switch 地址、不需要修改 `base_url`。
+
 如果用户以后不想使用视觉功能，可以在当前对话明确发送“我要卸载”或“卸载视觉”，由 AI 执行同一安全卸载流程；也可以手动运行：
 
 ```powershell
@@ -28,6 +36,13 @@ node scripts/uninstall.mjs --yes
 ```
 
 卸载会停止已确认的 bridge、备份并还原 Codex `base_url`，再把已安装技能移动到卸载备份目录；**不会删除仓库源代码，也不会把 API Key 输出到对话**。
+
+**配置文件位置：**
+
+- 技能模式：`~/.codex/skills/auto-vision-bridge/scripts/config.json`
+- 透明中转模式的运行配置：同一个技能目录下的 `scripts/config.json` 会被 `scripts/start-bridge.mjs` 读取并生成/更新 `bridge/config.json`
+
+如果用户把服务商、模型和 Key 发给 AI，AI 只能把 Key 写入上述本机文件，不能把 Key 回显到聊天、写进 README 或提交到 git。
 
 ---
 
@@ -62,7 +77,7 @@ Auto Vision Bridge 是夹在你 AI 客户端与模型服务之间的**轻量中�
 - 🖼️ **三种图片通道全覆盖**：Chat API（`image_url`）、Responses API（`input_image`）、Markdown 图片（`![](data:...)`）
 - ⚡ **同图缓存**：同一张图不重复调用视觉 API（300 条 LRU 缓存），省钱又省时
 - 📢 **调用提示**：需要调用视觉模型时，聊天窗口会先显示「📷 正在调用视觉模型识别图片…」，不再干等没反应（`noticeEnabled` 可开关，`noticeText` 可改文案）
-- 🔐 **Key 安全**：视觉 API Key 只存在本地 `bridge/config.json`（已 gitignore），**不进 git、不发给任何人**
+- 🔐 **Key 安全**：视觉 API Key 只存在本地技能 `scripts/config.json` 或透明中转运行配置（均已 gitignore），**不进 git、不发给任何人**
 - 🛠️ **交互式配置向导**：`node scripts/setup.mjs` —— 静默输入 Key（不回显）、自动备份旧配置、可选 1×1 图验证 Key
 - 🚀 **AI 一键部署**：把仓库地址发给任意 AI 编程助手，自动完成部署 → 逐项询问配置 → 写 Key → 启动 → 验证 → 交付
 - 🎁 **附赠 MCP 模式**：同一仓库还提供标准 MCP Server（`analyze_image` 工具），支持 7 家服务商 20+ 免费视觉模型
@@ -204,6 +219,31 @@ wire_api = "responses"
 ---
 
 ## ❓ 常见问题
+
+**Q：用户拉取仓库后，能不能在对话里一键配置并直接用？**
+
+可以。推荐运行 `node scripts/install-skill.mjs`。AI 只需要向用户确认三项：视觉服务商、视觉模型、API Key。若用户已经指定了服务商和模型，使用 `--provider` 与 `--model` 可跳过选择菜单，例如：
+
+```powershell
+node scripts/install-skill.mjs --provider zhipu --model glm-4.6v
+```
+
+向导会把 Key 静默写入 `~/.codex/skills/auto-vision-bridge/scripts/config.json`，自动运行安全体检；默认不会启用透明中转，也不会改 Codex `base_url`。安装完成后重启 Codex，让技能加载。
+
+**Q：为什么透明中转模式会遇到 CC Switch 的「不支持 vision」？**
+
+只有在启用透明中转时才涉及 `base_url`。正确链路是：`Codex → http://127.0.0.1:57399/v1 → CC Switch（通常 15721）→ 上游模型`。不要让 Codex 直接指向 `15721`。Bridge 会在启动后自动恢复被 CC Switch 覆盖的 `base_url`；切换供应商可能导致当前会话断开，等待恢复后重新打开 Codex 即可。
+
+**Q：客户需要手动修改哪个文件？**
+
+通常不需要手动修改。需要排查或换视觉模型时，编辑：
+
+```text
+~/.codex/skills/auto-vision-bridge/scripts/config.json
+```
+
+修改 `provider`、`model`、`baseUrl` 和 `apiKey` 后运行 `node scripts/doctor.mjs --test`。不要修改仓库里的示例文件，也不要把 Key 写进 git 跟踪文件。
+
 
 **Q：客户端提示「此模型不支持图片输入，请尝试其他模型」？**
 
