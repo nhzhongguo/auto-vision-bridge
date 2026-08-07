@@ -14,7 +14,7 @@
 
 ## 使用方法（发给客户 / 同事 / 你自己）
 
-> 请克隆并部署这个仓库：**`https://github.com/nhzhongguo/auto-vision-bridge`**
+> 请克隆并部署这个仓库：**`https://github.com/yuchen0x1/auto-vision-bridge`**
 > 部署前先确认我是否同意部署；我同意后，按仓库根目录 `AI-DEPLOY.md` 的「部署指令」严格执行，
 > 过程中需要询问我的配置项（**视觉模型服务商、API Key**）都列出来让我选/填，
 > 每一步的验证输出都贴给我看。
@@ -46,7 +46,7 @@ AI 记录实际输出；不满足则先安装，重跑本步。
 ### 第 1 步：克隆仓库
 
 ```bash
-git clone https://github.com/nhzhongguo/auto-vision-bridge.git
+git clone https://github.com/yuchen0x1/auto-vision-bridge.git
 cd auto-vision-bridge
 git log -1 --oneline   # 确认克隆成功，记录 commit 号
 ```

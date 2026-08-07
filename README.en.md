@@ -223,7 +223,7 @@ wire_api = "responses"
 
 Send this text (plus the repo URL) to any AI coding assistant (Codex / Claude Code / Cursor / Qwen Code / Copilot…):
 
-> Please clone and deploy this repository: **`https://github.com/nhzhongguo/auto-vision-bridge`**
+> Please clone and deploy this repository: **`https://github.com/yuchen0x1/auto-vision-bridge`**
 > Before deploying, ask me to confirm that I agree. Once I agree, follow the "Deployment Instructions" in `AI-DEPLOY.md` at the repo root, and ask me item by item for anything I need to decide (vision model, API key, upstream URL).
 
 The AI will: **check the environment → clone → ask for vision model / API key / upstream URL → write the config (key never enters git) → start → health check + end-to-end verification → hand over usage instructions**.
@@ -398,4 +398,4 @@ Have questions, feature requests, or just want to chat about AI? Scan the QR cod
 
 ## License
 
-[MIT](LICENSE) © nhzhongguo
+[MIT](LICENSE) © yuchen0x1

@@ -13,7 +13,7 @@ This file is a **one-click deployment SOP** for an **AI coding assistant** (Code
 
 ## How to use (send this to a customer / colleague / yourself)
 
-> Please clone and deploy this repository: **`https://github.com/nhzhongguo/auto-vision-bridge`**
+> Please clone and deploy this repository: **`https://github.com/yuchen0x1/auto-vision-bridge`**
 > Before deploying, confirm whether I agree to the deployment; once I agree, strictly follow the "Deployment Instructions" in the root `AI-DEPLOY.md`,
 > list every config item you need to ask me about (**vision model provider, API Key**) for me to choose/fill in,
 > and paste every step'\''s verification output back to me.
@@ -45,7 +45,7 @@ Record the actual output. If not satisfied, install first, then re-run this step
 ### Step 1: Clone the repository
 
 ```bash
-git clone https://github.com/nhzhongguo/auto-vision-bridge.git
+git clone https://github.com/yuchen0x1/auto-vision-bridge.git
 cd auto-vision-bridge
 git log -1 --oneline   # confirm the clone succeeded, record the commit hash
 ```

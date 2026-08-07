@@ -271,7 +271,7 @@ node scripts/install-skill.mjs --provider zhipu --model glm-4.6v
 
 把下面这段话连同仓库地址发给任意 AI 编程助手（Codex / Claude Code / Cursor / 通义灵码 / Copilot……）：
 
-> 请克隆并部署这个仓库：**`https://github.com/nhzhongguo/auto-vision-bridge`**
+> 请克隆并部署这个仓库：**`https://github.com/yuchen0x1/auto-vision-bridge`**
 > 部署前先确认我是否同意部署；同意后按仓库根目录 `AI-DEPLOY.md` 的「部署指令」执行，
 > 需要我决定的配置项（视觉模型、API Key、上游地址）逐项问我。
 
@@ -415,4 +415,4 @@ Register-ScheduledTask -TaskName "AutoVisionBridge" -Action $action -Trigger $tr
 
 ## License
 
-[MIT](LICENSE) © nhzhongguo
+[MIT](LICENSE) © yuchen0x1
