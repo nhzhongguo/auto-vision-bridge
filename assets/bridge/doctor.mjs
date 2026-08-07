@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * doctor.mjs —— Auto Vision Bridge 一键体检（AI 部署验收用）
+ * doctor.mjs —— Vision Adapter Bridge 一键体检（AI 部署验收用）
  * ---------------------------------------------------------------
  * 用法：
  *   node bridge/doctor.mjs                                   # 检查本仓库副本的部署

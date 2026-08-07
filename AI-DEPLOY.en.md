@@ -13,7 +13,7 @@ This file is a **one-click deployment SOP** for an **AI coding assistant** (Code
 
 ## How to use (send this to a customer / colleague / yourself)
 
-> Please clone and deploy this repository: **`https://github.com/yuchen0x1/auto-vision-bridge`**
+> Please clone and deploy this repository: **`https://github.com/yuchen0x1/vision-adapter-bridge`**
 > Before deploying, confirm whether I agree to the deployment; once I agree, strictly follow the "Deployment Instructions" in the root `AI-DEPLOY.md`,
 > list every config item you need to ask me about (**vision model provider, API Key**) for me to choose/fill in,
 > and paste every step'\''s verification output back to me.
@@ -45,8 +45,8 @@ Record the actual output. If not satisfied, install first, then re-run this step
 ### Step 1: Clone the repository
 
 ```bash
-git clone https://github.com/yuchen0x1/auto-vision-bridge.git
-cd auto-vision-bridge
+git clone https://github.com/yuchen0x1/vision-adapter-bridge.git
+cd vision-adapter-bridge
 git log -1 --oneline   # confirm the clone succeeded, record the commit hash
 ```
 
@@ -156,7 +156,7 @@ node scripts/start-bridge.mjs
 ## User doesn'\''t want to give Key to AI? Self-service deployment
 
 ```bash
-cd auto-vision-bridge
+cd vision-adapter-bridge
 node scripts/install-skill.mjs   # fully interactive, user types Key, AI never sees it
 ```
 
@@ -203,7 +203,7 @@ node scripts/setup.mjs   # re-configure, auto-backups old config.json
 
 ### Q8: Upgrade skill (pull new version from repo)
 ```bash
-cd /path/to/auto-vision-bridge   # original clone folder
+cd /path/to/vision-adapter-bridge   # original clone folder
 git pull
 node scripts/install-skill.mjs --force   # force overwrite with new version
 ```
@@ -235,7 +235,7 @@ To preview the impact without changes, use `node scripts/uninstall.mjs --dry-run
 ## Directory structure (for AI reference)
 
 ```
-auto-vision-bridge/              ← repo root (cloned here)
+vision-adapter-bridge/              ← repo root (cloned here)
 ├── scripts/
 │   ├── install-skill.mjs        ← one-click deploy entry (AI runs this)
 │   ├── setup.mjs                ← interactive config wizard

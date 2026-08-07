@@ -43,7 +43,7 @@
 
 ### Safety
 
-- 卸载前只停止能通过 `/health` 确认属于 Auto Vision Bridge 的 bridge。
+- 卸载前只停止能通过 `/health` 确认属于 Vision Adapter Bridge 的 bridge。
 - 修改 Codex `config.toml` 前自动生成备份。
 - 已安装技能移动到卸载备份目录，不直接永久删除。
 - API Key 仅保留在本机未跟踪配置文件中。

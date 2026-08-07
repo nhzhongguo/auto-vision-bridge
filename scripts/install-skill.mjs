@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * install-skill.mjs - Auto Vision Bridge 技能一键部署
+ * install-skill.mjs - Vision Adapter Bridge 技能一键部署
  *
  * 用法：
  *   node scripts/install-skill.mjs          # 交互式全自动部署（推荐）
@@ -158,7 +158,7 @@ function runScript(scriptName, args = []) {
 
 async function main() {
   console.log("==============================================");
-  console.log("  Auto Vision Bridge - 技能一键部署");
+  console.log("  Vision Adapter Bridge - 技能一键部署");
   console.log("  克隆 → 导入技能 → 配置视觉模型 → 体检 → 完成");
   console.log("==============================================\n");
 

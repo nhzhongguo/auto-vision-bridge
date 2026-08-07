@@ -14,7 +14,7 @@
 
 ## 使用方法（发给客户 / 同事 / 你自己）
 
-> 请克隆并部署这个仓库：**`https://github.com/yuchen0x1/auto-vision-bridge`**
+> 请克隆并部署这个仓库：**`https://github.com/yuchen0x1/vision-adapter-bridge`**
 > 部署前先确认我是否同意部署；我同意后，按仓库根目录 `AI-DEPLOY.md` 的「部署指令」严格执行，
 > 过程中需要询问我的配置项（**视觉模型服务商、API Key**）都列出来让我选/填，
 > 每一步的验证输出都贴给我看。
@@ -46,8 +46,8 @@ AI 记录实际输出；不满足则先安装，重跑本步。
 ### 第 1 步：克隆仓库
 
 ```bash
-git clone https://github.com/yuchen0x1/auto-vision-bridge.git
-cd auto-vision-bridge
+git clone https://github.com/yuchen0x1/vision-adapter-bridge.git
+cd vision-adapter-bridge
 git log -1 --oneline   # 确认克隆成功，记录 commit 号
 ```
 
@@ -149,7 +149,7 @@ node scripts/start-bridge.mjs
 ## 用户不想把 Key 发给 AI？自助部署
 
 ```bash
-cd auto-vision-bridge
+cd vision-adapter-bridge
 node scripts/install-skill.mjs   # 全程交互，Key 自己输，AI 看不到
 ```
 
@@ -196,7 +196,7 @@ node scripts/setup.mjs   # 重新配置，会自动备份旧 config.json
 
 ### Q8: 升级技能（拉取仓库新版本）
 ```bash
-cd /path/to/auto-vision-bridge   # 原克隆目录
+cd /path/to/vision-adapter-bridge   # 原克隆目录
 git pull
 node scripts/install-skill.mjs --force   # 强制覆盖安装新版
 ```
@@ -228,7 +228,7 @@ node scripts/uninstall.mjs --yes
 ## 目录结构说明（给 AI 看的）
 
 ```
-auto-vision-bridge/              ← 仓库根目录（克隆到这里）
+vision-adapter-bridge/           ← 仓库根目录（克隆到这里）
 ├── scripts/
 │   ├── install-skill.mjs        ← 一键部署入口（AI 运行这个）
 │   ├── setup.mjs                ← 交互式配置向导

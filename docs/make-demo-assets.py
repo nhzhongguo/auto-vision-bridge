@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Auto Vision Bridge 演示素材生成器
+Vision Adapter Bridge 演示素材生成器
 =================================
 生成 README 里的两张图：
   docs/demo-terminal.png   端到端实测（真实运行输出渲染成终端样式）
@@ -178,7 +178,7 @@ def build_gif(path, title, body, w=900, h=580, pad=18, size=15, pause=5, fps=110
 
 
 # ---------------------------------------------------------------- PNG：端到端实测
-PNG_TITLE = "Auto Vision Bridge - 端到端实测 (真实运行输出)"
+PNG_TITLE = "Vision Adapter Bridge - 端到端实测 (真实运行输出)"
 PNG_BODY = [
     ("PS C:\\Users\\...\\glm-vision-mcp> node bridge/test-bridge.mjs --image test-vision.png", FG, False),
     ("", None, False),
@@ -197,11 +197,11 @@ PNG_BODY = [
     ("好", LIGHT, False),
     ("→ ✅ 透传验证通过：无图请求零开销", GREEN, False),
     ("", None, False),
-    ("🎉 全部通过！Auto Vision Bridge 工作正常。", GREEN_B, True),
+    ("🎉 全部通过！Vision Adapter Bridge 工作正常。", GREEN_B, True),
 ]
 
 # ---------------------------------------------------------------- GIF：AI 一键部署
-GIF_TITLE = "Auto Vision Bridge - AI 一键部署演示"
+GIF_TITLE = "Vision Adapter Bridge - AI 一键部署演示"
 GIF_BODY = [
     ("[用户 → AI 助手]", GRAY, True),
     ("用户: 请克隆并部署这个仓库，部署前先确认我是否同意 👍", BLUE, False),
@@ -210,7 +210,7 @@ GIF_BODY = [
     ("用户: y，同意 ✅", BLUE, False),
     ("", None, False),
     ("[1/6] 环境检查: Node.js v20.11.0 已安装 ✅", FG, True),
-    ("[2/6] 克隆仓库 auto-vision-bridge ✅", FG, True),
+    ("[2/6] 克隆仓库 vision-adapter-bridge ✅", FG, True),
     ("[3/6] 询问配置", FG, True),
     ("      · 视觉模型: 1) 智谱 glm-4.6v (推荐)  2) 硅基流动 Qwen2.5-VL  3) 自定义", LIGHT, False),
     ("用户: 选 1，智谱 glm-4.6v", BLUE, False),

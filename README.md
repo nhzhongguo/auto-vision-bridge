@@ -1,4 +1,4 @@
-# 🦾 Auto Vision Bridge — 给不会看图的 AI 自动装上眼睛
+# 🦾 Vision Adapter Bridge — 给不会看图的 AI 自动装上眼睛
 
 > 🌐 **语言切换:** [简体中文](README.md) · [English](README.en.md)
 
@@ -49,11 +49,11 @@ node scripts/uninstall.mjs --yes
 ## 它解决什么问题？
 
 很多模型**不支持多模态**：你一发截图，模型要么报错、要么答非所问。
-Auto Vision Bridge 是夹在你 AI 客户端与模型服务之间的**轻量中转层**（反向代理）：
+Vision Adapter Bridge 是夹在你 AI 客户端与模型服务之间的**轻量中转层**（反向代理）：
 
 ```
 ┌────────────┐   发图+问题    ┌──────────────────┐   识别/透传   ┌──────────────┐
-│ AI 客户端   │ ────────────▶ │ Auto Vision Bridge │ ──────────▶ │ 你的模型服务   │
+│ AI 客户端   │ ────────────▶ │ Vision Adapter Bridge │ ──────────▶ │ 你的模型服务   │
 │ (任意)     │ ◀──────────── │ 智能判断+自动识图   │ ◀────────── │ (DeepSeek等)  │
 └────────────┘    正常回答    └──────────────────┘  调用视觉模型  └──────────────┘
 ```
@@ -152,7 +152,7 @@ flowchart TD
 **方式 A：交互式向导（推荐）**
 
 ```powershell
-cd auto-vision-bridge
+cd vision-adapter-bridge
 node scripts/setup.mjs
 ```
 
@@ -206,7 +206,7 @@ node bridge/test-bridge.mjs --image 你的测试图片.png
 
 ```toml
 [model_providers.auto-vision]
-name = "Auto Vision Bridge"
+name = "Vision Adapter Bridge"
 base_url = "http://127.0.0.1:57399/v1"
 wire_api = "responses"
 ```
@@ -271,7 +271,7 @@ node scripts/install-skill.mjs --provider zhipu --model glm-4.6v
 
 把下面这段话连同仓库地址发给任意 AI 编程助手（Codex / Claude Code / Cursor / 通义灵码 / Copilot……）：
 
-> 请克隆并部署这个仓库：**`https://github.com/yuchen0x1/auto-vision-bridge`**
+> 请克隆并部署这个仓库：**`https://github.com/yuchen0x1/vision-adapter-bridge`**
 > 部署前先确认我是否同意部署；同意后按仓库根目录 `AI-DEPLOY.md` 的「部署指令」执行，
 > 需要我决定的配置项（视觉模型、API Key、上游地址）逐项问我。
 
@@ -286,7 +286,7 @@ AI 会自动完成：**环境检查 → 克隆 → 询问视觉模型 / API Key 
 如果不想让 AI 助手经手你的 Key，自己跑一遍向导即可，改完重启 Bridge 就生效：
 
 ```powershell
-cd auto-vision-bridge
+cd vision-adapter-bridge
 node scripts/setup.mjs
 ```
 
@@ -337,7 +337,7 @@ node scripts/setup.mjs   # 选择“本地 Ollama 开源视觉模型”
 ## 目录结构
 
 ```
-auto-vision-bridge/
+vision-adapter-bridge/
 ├── bridge/                    # ★ 主角：自动识图中转层（零依赖）
 │   ├── server.mjs             #   中转服务：智能判断 + 识图替换 + 缓存
 │   ├── config.example.json    #   配置模板（复制为 config.json 使用）

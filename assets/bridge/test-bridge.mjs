@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Auto Vision Bridge 端到端测试
+ * Vision Adapter Bridge 端到端测试
  * 用法：
  *   node test-bridge.mjs                        # 内置 1x1 测试图 + deepseek-v4-flash 模型
  *   node test-bridge.mjs --image 图.png --model deepseek-v4-flash --port 57399
@@ -35,7 +35,7 @@ if (IMG) {
     console.error("   请检查：");
     console.error("   1) 路径是否正确（推荐使用完整绝对路径，含空格时用双引号包住）；");
     console.error("   2) 当前目录是否为仓库目录（应能看到 bridge/ 文件夹），示例：");
-    console.error('      cd auto-vision-bridge');
+    console.error('      cd vision-adapter-bridge');
     console.error('      node bridge/test-bridge.mjs --image "C:\\Users\\<用户名>\\图片\\demo.png"');
     process.exit(1);
   }
@@ -159,5 +159,5 @@ let ok = true;
   ok = ok && good;
 }
 
-console.log(`\n${ok ? "🎉 全部通过！Auto Vision Bridge 工作正常。" : "⚠️ 有场景未通过，请检查 bridge 配置与上游状态。"}`);
+console.log(`\n${ok ? "🎉 全部通过！Vision Adapter Bridge 工作正常。" : "⚠️ 有场景未通过，请检查 bridge 配置与上游状态。"}`);
 process.exit(ok ? 0 : 1);

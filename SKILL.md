@@ -3,7 +3,7 @@ name: auto-vision-bridge
 description: 让不支持视觉的模型也能看图。当用户发送图片、截图、照片，或要求描述、OCR、读取图片内容，而当前模型不支持视觉、报「当前模型不支持该能力：vision」或「此模型不支持图片输入」时，使用本技能调用外部视觉大模型把图片转成文字，再继续回答。也用于配置或修复本地 vision bridge 中转层，让发图请求被自动拦截并转文字。
 ---
 
-# Auto Vision Bridge
+# Vision Adapter Bridge
 
 ## 🚀 一键部署（推荐）
 
@@ -85,7 +85,7 @@ node scripts/uninstall.mjs --yes
 
 卸载脚本会：
 
-- 停止已确认属于 Auto Vision Bridge 的本地 bridge；
+- 停止已确认属于 Vision Adapter Bridge 的本地 bridge；
 - 如果 Codex `config.toml` 的 `base_url` 指向 bridge，先备份再还原到原上游地址；
 - 将已安装技能移动到 `~/.codex/skills/auto-vision-bridge-uninstall-backups/`，而不是永久删除；
 - 保留仓库源代码，方便用户以后重新拉取或运行安装脚本。

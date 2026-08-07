@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * setup.mjs - 配置 Auto Vision Bridge 技能
+ * setup.mjs - 配置 Vision Adapter Bridge 技能
  *
  * 重点：
  * - 内置每个服务商的视觉模型目录，只让用户选择已知视觉模型；
@@ -269,7 +269,7 @@ async function testVision(config, provider, model) {
 
 async function main() {
   console.log("==============================================");
-  console.log("  Auto Vision Bridge - 配置向导");
+  console.log("  Vision Adapter Bridge - 配置向导");
   console.log("  只选择视觉模型，并在测试前提示计费风险");
   if (SKILL_MODE) console.log("  技能模式：不启动常驻服务、不修改 Codex base_url");
   console.log("==============================================\n");

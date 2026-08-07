@@ -1,4 +1,4 @@
 interface:
-  display_name: "Auto Vision Bridge"
+  display_name: "Vision Adapter Bridge"
   short_description: "让不支持视觉的模型也能识图：调用外部视觉大模型把图片转成文字描述"
   default_prompt: "用户发送图片、截图或照片时，使用 auto-vision-bridge 技能调用视觉大模型识图，再把文字描述用于回答。"

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * doctor.mjs - 体检 Auto Vision Bridge 技能
+ * doctor.mjs - 体检 Vision Adapter Bridge 技能
  *
  * 用法：
  *   node scripts/doctor.mjs           # 检查配置

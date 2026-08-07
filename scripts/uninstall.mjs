@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * uninstall.mjs - 安全卸载 Auto Vision Bridge
+ * uninstall.mjs - 安全卸载 Vision Adapter Bridge
  *
  * 卸载范围：
  * - 停止由技能启动的本地 bridge（如果健康检查确认它是 vision-bridge）；
@@ -171,13 +171,13 @@ async function main() {
     return;
   }
   console.log("==============================================");
-  console.log("  Auto Vision Bridge - 安全卸载");
+  console.log("  Vision Adapter Bridge - 安全卸载");
   console.log("==============================================\n");
   console.log("卸载会停止本地 bridge、还原 Codex base_url，并移除已安装技能。\n");
   console.log("不会删除仓库源代码；已安装目录会移动到备份目录，不会直接丢失。\n");
 
   if (!YES && !DRY_RUN) {
-    const answer = await ask("确认卸载 Auto Vision Bridge？(y/N)：");
+    const answer = await ask("确认卸载 Vision Adapter Bridge？(y/N)：");
     if (answer !== "y" && answer !== "yes") {
       console.log("已取消，没有修改任何文件。");
       return;

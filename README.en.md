@@ -1,4 +1,4 @@
-# 🦾 Auto Vision Bridge — Give AI Models That Can't See Images a Pair of Eyes
+# 🦾 Vision Adapter Bridge — Give AI Models That Can't See Images a Pair of Eyes
 
 > 🌐 **Language:** [简体中文](README.md) · [English](README.en.md)
 
@@ -49,11 +49,11 @@ If the user gives the provider, model, and Key to an AI, the AI must write the K
 ## What problem does it solve?
 
 Many models **don't support multimodal input**: when you paste a screenshot, they either error out or give nonsense answers.
-Auto Vision Bridge is a **lightweight proxy layer** (reverse proxy) between your AI client and your model service:
+Vision Adapter Bridge is a **lightweight proxy layer** (reverse proxy) between your AI client and your model service:
 
 ```
 ┌──────────────┐  image+question  ┌────────────────────┐  describe/pass  ┌──────────────┐
-│  AI client   │ ───────────────▶ │ Auto Vision Bridge │ ──────────────▶ │ Model service│
+│  AI client   │ ───────────────▶ │ Vision Adapter Bridge │ ──────────────▶ │ Model service│
 │    (any)     │ ◀─────────────── │   smart routing    │ ◀────────────── │  (DeepSeek)  │
 └──────────────┘  normal answer   └────────────────────┘  vision model   └──────────────┘
 ```
@@ -152,7 +152,7 @@ flowchart TD
 **Option A: interactive wizard (recommended)**
 
 ```powershell
-cd auto-vision-bridge
+cd vision-adapter-bridge
 node scripts/setup.mjs
 ```
 
@@ -206,7 +206,7 @@ Change your client's model API base URL (`base_url`) to `http://127.0.0.1:57399/
 
 ```toml
 [model_providers.auto-vision]
-name = "Auto Vision Bridge"
+name = "Vision Adapter Bridge"
 base_url = "http://127.0.0.1:57399/v1"
 wire_api = "responses"
 ```
@@ -223,7 +223,7 @@ wire_api = "responses"
 
 Send this text (plus the repo URL) to any AI coding assistant (Codex / Claude Code / Cursor / Qwen Code / Copilot…):
 
-> Please clone and deploy this repository: **`https://github.com/yuchen0x1/auto-vision-bridge`**
+> Please clone and deploy this repository: **`https://github.com/yuchen0x1/vision-adapter-bridge`**
 > Before deploying, ask me to confirm that I agree. Once I agree, follow the "Deployment Instructions" in `AI-DEPLOY.md` at the repo root, and ask me item by item for anything I need to decide (vision model, API key, upstream URL).
 
 The AI will: **check the environment → clone → ask for vision model / API key / upstream URL → write the config (key never enters git) → start → health check + end-to-end verification → hand over usage instructions**.
@@ -237,7 +237,7 @@ Full instructions: [AI-DEPLOY.en.md](AI-DEPLOY.en.md) (or [简体中文](AI-DEPL
 Run the wizard yourself — changes take effect after restarting the Bridge:
 
 ```powershell
-cd auto-vision-bridge
+cd vision-adapter-bridge
 node scripts/setup.mjs
 ```
 
@@ -288,7 +288,7 @@ The default model is `moondream`; `qwen2.5vl:3b` and `qwen2.5vl:7b` are also ava
 ## Project structure
 
 ```
-auto-vision-bridge/
+vision-adapter-bridge/
 ├── bridge/                    # ★ Main: auto-vision proxy layer (zero-dependency)
 │   ├── server.mjs             #   Proxy service: smart routing + image→text + cache
 │   ├── config.example.json    #   Config template (copy to config.json)

@@ -1,9 +1,10 @@
 {
-  "name": "auto-vision-bridge",
+  "name": "vision-adapter-bridge",
   "version": "1.2.2",
-  "description": "Auto Vision Bridge：零依赖自动识图中转层，给 DeepSeek 等不支持视觉的模型自动补上看图能力（支持视觉的模型原样透传），附赠 7 家服务商 20+ 免费视觉模型的 MCP Server",
+  "description": "Vision Adapter Bridge：零依赖视觉适配中转层，给 DeepSeek 等不支持视觉的模型自动补上看图能力（支持视觉的模型原样透传），附赠 7 家服务商 20+ 免费视觉模型的 MCP Server",
   "type": "module",
   "bin": {
+    "vision-adapter-bridge": "./dist/index.js",
     "auto-vision-bridge": "./dist/index.js"
   },
   "main": "dist/index.js",
@@ -21,6 +22,7 @@
   },
   "keywords": [
     "mcp",
+    "vision-adapter-bridge",
     "auto-vision-bridge",
     "vision-bridge",
     "image-understanding",
