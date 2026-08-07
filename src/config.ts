@@ -20,7 +20,7 @@ export const VisionProviderSchema = z.object({
   keyEnv: z.array(z.string()),
   keyLabel: z.string(),
   endpoint: z.string().url(),
-  style: z.enum(["openai", "gemini"]),
+  style: z.enum(["openai", "gemini", "cloudflare"]),
   accountEnv: z.string().optional(),
   models: z.array(
     z.object({
@@ -48,6 +48,7 @@ export const BridgeConfigSchema = z.object({
   visionModel: z.string().default("glm-4.6v"),
   visionBaseUrl: z.string().url().default("https://open.bigmodel.cn/api/paas/v4/chat/completions"),
   visionApiKey: z.string().default(""),
+  visionAccountId: z.string().default(""),
   visionPrompt: z.string().default(
     "这是一张用户发送的图片。请完整描述图片内容，包括：1) 图中所有可见文字（OCR，原样输出并注意排版）；2) 场景与主体；3) 物体、人物、动作、布局；4) 颜色与风格。用中文回答。"
   ),
@@ -81,6 +82,8 @@ export const BridgeConfigSchema = z.object({
   noticeEnabled: z.boolean().default(true),
   noticeText: z.string().default("📷 检测到当前模型不支持直接看图，正在调用视觉模型识别图片…\n"),
 
+  /** 允许 bridge 主动抓取内网图片（默认关闭，避免 SSRF） */
+  allowPrivateImageUrls: z.boolean().default(false),
   /** 请求体大小限制（字节） */
   maxRequestBodySize: z.number().int().positive().default(100 * 1024 * 1024), // 100MB
 
@@ -125,6 +128,8 @@ export function loadConfig(): UnifiedConfig {
   if (process.env.BRIDGE_PORT) envOverrides.port = parseInt(process.env.BRIDGE_PORT, 10);
   if (process.env.BRIDGE_UPSTREAM) envOverrides.upstream = process.env.BRIDGE_UPSTREAM;
   if (process.env.VISION_API_KEY) envOverrides.visionApiKey = process.env.VISION_API_KEY;
+  if (process.env.VISION_ACCOUNT_ID) envOverrides.visionAccountId = process.env.VISION_ACCOUNT_ID;
+  if (process.env.ALLOW_PRIVATE_IMAGE_URLS) envOverrides.allowPrivateImageUrls = process.env.ALLOW_PRIVATE_IMAGE_URLS === "true";
   if (process.env.VISION_MODEL) envOverrides.visionModel = process.env.VISION_MODEL;
   if (process.env.VISION_BASE_URL) envOverrides.visionBaseUrl = process.env.VISION_BASE_URL;
   if (process.env.VISION_PROVIDER) envOverrides.visionProvider = process.env.VISION_PROVIDER;

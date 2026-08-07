@@ -124,7 +124,7 @@ function restoreCodexBaseUrl(config, dryRun) {
   const upstream = String(bridge.upstream || "").replace(/\/+$/, "");
   const text = readFileSync(CODEX_CONFIG, "utf8");
   const bridgeUrl = new RegExp(`https?://(?:127\\.0\\.0\\.1|localhost):${port}/v1/?$`, "i");
-  const match = text.match(/^(\s*base_url\s*=\s*["'])([^"']+)(["']\s*)$/m);
+  const match = text.match(/^(\s*base_url\s*=\s*["'])([^"']+)(["'])(\s*(?:#[^\r\n]*)?)$/m);
   if (!match || !bridgeUrl.test(match[2])) {
     console.log("- Codex base_url 未指向此 bridge，跳过还原");
     return false;
@@ -143,7 +143,7 @@ function restoreCodexBaseUrl(config, dryRun) {
 
   const backup = `${CODEX_CONFIG}.before-auto-vision-uninstall-${timestamp()}.bak`;
   writeFileSync(backup, text, "utf8");
-  const updated = text.replace(match[0], `${match[1]}${restored}${match[3]}`);
+  const updated = text.replace(match[0], `${match[1]}${restored}${match[3]}${match[4]}`);
   writeFileSync(CODEX_CONFIG, updated, "utf8");
   console.log(`  已备份原 config.toml：${backup}`);
   return true;

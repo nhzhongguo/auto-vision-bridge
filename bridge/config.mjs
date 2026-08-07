@@ -6,6 +6,7 @@
 import { readFileSync, existsSync, watch } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { resolveVisionProvider } from "./providers.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -21,6 +22,7 @@ const DEFAULT_CONFIG = {
   visionModel: "glm-4.6v",
   visionBaseUrl: "https://open.bigmodel.cn/api/paas/v4/chat/completions",
   visionApiKey: "",
+  visionAccountId: "",
   visionPrompt:
     "这是一张用户发送的图片。请完整描述图片内容，包括：1) 图中所有可见文字（OCR，原样输出并注意排版）；2) 场景与主体；3) 物体、人物、动作、布局；4) 颜色与风格。用中文回答。",
   visionTimeoutMs: 120000,
@@ -50,33 +52,68 @@ const DEFAULT_CONFIG = {
 
   maxRequestBodySize: 100 * 1024 * 1024,
 
+  allowPrivateImageUrls: false,
+
   logFile: join(ROOT, "bridge", "bridge.log"),
   logLevel: "info",
 };
 
-/** 简单的类型检查和默认值填充 */
+const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+/** 类型检查和默认值填充；配置非法时抛出明确错误。 */
 function validateAndFill(config) {
   const result = { ...DEFAULT_CONFIG };
+  const errors = [];
 
   for (const [key, defaultValue] of Object.entries(DEFAULT_CONFIG)) {
-    if (config[key] !== undefined) {
-      // 类型检查
-      if (typeof defaultValue === "number" && typeof config[key] === "number") {
-        result[key] = config[key];
-      } else if (typeof defaultValue === "string" && typeof config[key] === "string") {
-        result[key] = config[key];
-      } else if (typeof defaultValue === "boolean" && typeof config[key] === "boolean") {
-        result[key] = config[key];
-      } else if (Array.isArray(defaultValue) && Array.isArray(config[key])) {
-        result[key] = config[key];
-      } else if (typeof defaultValue === "object" && defaultValue !== null && !Array.isArray(defaultValue)) {
-        result[key] = { ...defaultValue, ...config[key] };
-      } else {
-        result[key] = config[key];
-      }
+    const value = config[key];
+    if (value === undefined) continue;
+
+    if (typeof defaultValue === "number") {
+      if (typeof value !== "number" || !Number.isFinite(value)) errors.push(`${key} 应为数字`);
+      else result[key] = value;
+    } else if (typeof defaultValue === "string") {
+      if (typeof value !== "string") errors.push(`${key} 应为字符串`);
+      else result[key] = value;
+    } else if (typeof defaultValue === "boolean") {
+      if (typeof value !== "boolean") errors.push(`${key} 应为布尔值`);
+      else result[key] = value;
+    } else if (Array.isArray(defaultValue)) {
+      if (!Array.isArray(value)) errors.push(`${key} 应为数组`);
+      else result[key] = value;
+    } else if (isPlainObject(defaultValue)) {
+      if (!isPlainObject(value)) errors.push(`${key} 应为对象`);
+      else result[key] = { ...defaultValue, ...value };
     }
   }
 
+  if (!Number.isInteger(result.port) || result.port < 1 || result.port > 65535) {
+    errors.push("port 应在 1-65535");
+  }
+  if (!Number.isInteger(result.visionTimeoutMs) || result.visionTimeoutMs <= 0) errors.push("visionTimeoutMs 应为正整数");
+  if (!Number.isInteger(result.cacheSize) || result.cacheSize <= 0) errors.push("cacheSize 应为正整数");
+  if (!Number.isInteger(result.maxDescChars) || result.maxDescChars <= 0) errors.push("maxDescChars 应为正整数");
+  if (!Number.isInteger(result.maxRequestBodySize) || result.maxRequestBodySize <= 0) errors.push("maxRequestBodySize 应为正整数");
+  if (typeof result.listen !== "string" || !result.listen.trim()) errors.push("listen 不能为空");
+  for (const key of ["upstream", "visionBaseUrl"]) {
+    if (typeof result[key] !== "string" || !/^https?:\/\//i.test(result[key])) errors.push(`${key} 应为 http(s) URL`);
+  }
+  if (!(result.logLevel in LOG_LEVELS)) errors.push("logLevel 应为 debug/info/warn/error");
+  for (const key of ["fallbackVisionProviders", "visionModels", "nonVisionModels"]) {
+    if (!Array.isArray(result[key]) || result[key].some((x) => typeof x !== "string")) errors.push(`${key} 应为字符串数组`);
+  }
+  if (!isPlainObject(result.modelAliases)) errors.push("modelAliases 应为对象");
+  if (!result.visionModel.trim()) errors.push("visionModel 不能为空");
+  if (!resolveVisionProvider(result.visionProvider)) errors.push(`visionProvider 未知：${result.visionProvider}`);
+  if (result.fallbackVisionProviders.some((id) => !resolveVisionProvider(id))) {
+    errors.push("fallbackVisionProviders 包含未知服务商");
+  }
+
+  if (errors.length) throw new Error("bridge/config.json 配置无效：" + errors.join("；"));
   return result;
 }
 
@@ -87,7 +124,7 @@ function loadConfigFile() {
       const content = readFileSync(BRIDGE_CONFIG_PATH, "utf8");
       return JSON.parse(content);
     } catch (e) {
-      console.error(`[config] 读取配置文件失败: ${e.message}`);
+      throw new Error(`读取配置文件失败 ${BRIDGE_CONFIG_PATH}: ${e.message}`);
     }
   }
   return {};
@@ -101,6 +138,8 @@ function applyEnvOverrides(config) {
   if (process.env.BRIDGE_PORT) overrides.port = parseInt(process.env.BRIDGE_PORT, 10);
   if (process.env.BRIDGE_UPSTREAM) overrides.upstream = process.env.BRIDGE_UPSTREAM;
   if (process.env.VISION_API_KEY) overrides.visionApiKey = process.env.VISION_API_KEY;
+  if (process.env.VISION_ACCOUNT_ID) overrides.visionAccountId = process.env.VISION_ACCOUNT_ID;
+  if (process.env.ALLOW_PRIVATE_IMAGE_URLS) overrides.allowPrivateImageUrls = process.env.ALLOW_PRIVATE_IMAGE_URLS === "true";
   if (process.env.VISION_MODEL) overrides.visionModel = process.env.VISION_MODEL;
   if (process.env.VISION_BASE_URL) overrides.visionBaseUrl = process.env.VISION_BASE_URL;
   if (process.env.VISION_PROVIDER) overrides.visionProvider = process.env.VISION_PROVIDER;
@@ -115,9 +154,6 @@ function applyEnvOverrides(config) {
 function applyLegacyCompat(config) {
   if (config.zhipuApiKey && !config.visionApiKey) {
     config.visionApiKey = config.zhipuApiKey;
-  }
-  if (config.visionBaseUrl && !config.visionBaseUrl) {
-    // 已经有了
   }
   return config;
 }
@@ -138,7 +174,7 @@ export function getBridgeConfig() {
 export function reloadConfig() {
   const fileConfig = loadConfigFile();
   const merged = applyLegacyCompat({ ...DEFAULT_CONFIG, ...fileConfig });
-  currentConfig = applyEnvOverrides(merged);
+  currentConfig = validateAndFill(applyEnvOverrides(merged));
   return currentConfig;
 }
 
@@ -150,7 +186,6 @@ export function watchConfig(onChange) {
 
   const watcher = watch(BRIDGE_CONFIG_PATH, (eventType) => {
     if (eventType === "change") {
-      // 延迟一点，避免文件还在写入中
       setTimeout(() => {
         try {
           const oldConfig = currentConfig;
@@ -168,7 +203,7 @@ export function watchConfig(onChange) {
   configWatchers.push(watcher);
   return () => {
     watcher.close();
-    configWatchers = configWatchers.filter(w => w !== watcher);
+    configWatchers = configWatchers.filter((w) => w !== watcher);
   };
 }
 

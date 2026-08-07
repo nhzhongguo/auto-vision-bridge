@@ -77,6 +77,18 @@ if (!process.env.GEMINI_API_KEY && !r3text.includes("未配置")) {
   process.exit(1);
 }
 
+console.log("\n=== analyze_image (provider=cloudflare，无 Key 时应提示未配置) ===");
+const r4 = await client.callTool({
+  name: "analyze_image",
+  arguments: { image: imgPath, provider: "cloudflare", prompt: "什么颜色？" },
+});
+console.log(JSON.stringify(r4, null, 2));
+const r4text = r4.content?.[0]?.text ?? "";
+if (!process.env.CLOUDFLARE_API_TOKEN && !r4text.includes("未配置")) {
+  console.error("期望「未配置 Key」错误，实际：" + r4text);
+  process.exit(1);
+}
+
 await client.close();
 console.log("\nSMOKE TEST PASSED ✅");
 process.exit(0);

@@ -82,6 +82,20 @@ export const PROVIDERS = [
     ],
   },
   {
+    id: "ollama",
+    name: "本地 Ollama 开源视觉模型",
+    keyUrl: "无需 API Key，需安装 Ollama：https://ollama.com/download",
+    keyHint: "本地模式不填写 API Key；请先安装 Ollama，再运行 node scripts/install-local-model.mjs",
+    endpoint: "http://127.0.0.1:11434/v1/chat/completions",
+    style: "openai",
+    local: true,
+    models: [
+      { id: "moondream", vision: true, billing: "free", note: "轻量本地识图，CPU 可跑，推荐", default: true },
+      { id: "qwen2.5vl:3b", vision: true, billing: "free", note: "本地识图更强，需先 ollama pull qwen2.5vl:3b" },
+      { id: "qwen2.5vl:7b", vision: true, billing: "free", note: "更强但更大，需先 ollama pull qwen2.5vl:7b" },
+    ],
+  },
+  {
     id: "gemini",
     name: "Google Gemini",
     keyUrl: "https://aistudio.google.com/apikey",

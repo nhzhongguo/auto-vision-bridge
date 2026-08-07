@@ -14,7 +14,7 @@ node scripts/install-skill.mjs
 ```
 
 全自动完成：**导入技能 → 选视觉服务商 → 选择已登记的视觉模型 → 输 Key → 安全验证 → 体检 → 交付**。
-只需两项配置：**视觉模型服务商**、**API Key**。向导会内置该服务商的视觉模型目录，不会拿纯文本模型反复试错。
+通常只需两项配置：**视觉模型服务商**、**API Key**。本地 Ollama 模式不需要 API Key。向导会内置该服务商的视觉模型目录，不会拿纯文本模型反复试错。
 无需上游地址、无需启动服务、无需改 base_url。
 
 ---
@@ -43,6 +43,17 @@ API Key 只放在 `scripts/config.json`（已 gitignore），不要把它写进 
 node scripts/setup.mjs   # 交互式：选服务商/视觉模型 → 静默输 Key → 按计费风险验证
 node scripts/doctor.mjs --test   # 免费档自动验证；付费/未知价格默认跳过
 ```
+
+### 本地开源视觉模型
+
+不想使用外部视觉 API 时，可用 Ollama 在本机运行开源模型：
+
+```powershell
+node scripts/install-local-model.mjs
+node scripts/setup.mjs   # 选择“本地 Ollama 开源视觉模型”，无需输入 Key
+```
+
+默认模型是 `moondream`，本地服务地址是 `http://127.0.0.1:11434`。模型权重由 Ollama 管理，不会写入本技能仓库。
 
 
 ### 视觉模型目录与计费安全

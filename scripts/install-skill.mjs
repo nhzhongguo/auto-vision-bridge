@@ -27,9 +27,9 @@ import { homedir } from "node:os";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(HERE, "..");
 const SKILL_SRC = REPO_ROOT;                    // 仓库根目录即技能源
-const SKILL_DST = join(homedir(), ".codex", "skills", "auto-vision-bridge");
+const SKILL_DST = join(process.env.CODEX_HOME || homedir(), ".codex", "skills", "auto-vision-bridge");
 
-const COPY_DIRS = ["scripts", "references", "assets", "agents"];
+const COPY_DIRS = ["scripts", "bridge", "references", "assets", "agents"];
 const COPY_FILES = ["SKILL.md", ".gitignore"];
 const COPY_EXCLUDED_BASENAMES = new Set(["config.json", "bridge.log"]);
 
@@ -102,21 +102,25 @@ function copySkill() {
   // 确保目标目录存在
   mkdirSync(SKILL_DST, { recursive: true });
 
-  // 复制目录
+  // 复制目录，并保留本地已有 config.json（scripts/ 与 bridge/ 都可能配置过 Key）
   for (const d of COPY_DIRS) {
     const src = join(SKILL_SRC, d);
     const dst = join(SKILL_DST, d);
     if (existsSync(src)) {
-        let preservedConfig = "";
-      const localConfig = join(dst, "config.json");
-      if (d === "scripts" && existsSync(localConfig)) {
-        preservedConfig = readFileSync(localConfig, "utf8");
+      const preservedConfigs = new Map();
+      if (existsSync(dst)) {
+        for (const rel of ["scripts/config.json", "bridge/config.json"]) {
+          const localConfig = join(SKILL_DST, rel);
+          if (existsSync(localConfig)) {
+            preservedConfigs.set(rel, readFileSync(localConfig, "utf8"));
+          }
+        }
       }
       if (existsSync(dst)) rmSync(dst, { recursive: true, force: true });
       cpSync(src, dst, { recursive: true, filter: isSafeToCopy });
-      if (preservedConfig) {
-        writeFileSync(join(dst, "config.json"), preservedConfig, "utf8");
-        logOk(`已保留本地 ${d}/config.json`);
+      for (const [rel, content] of preservedConfigs) {
+        writeFileSync(join(SKILL_DST, rel), content, "utf8");
+        logOk(`已保留本地 ${rel}`);
       }
       logOk(`已复制 ${d}/`);
     } else {

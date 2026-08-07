@@ -10,6 +10,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import net from "node:net";
+import { getProvider, getDefaultModel } from "./provider-catalog.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, "..");
@@ -27,9 +28,15 @@ if (!existsSync(SKILL_CONFIG)) {
 
 const cfg = JSON.parse(readFileSync(SKILL_CONFIG, "utf8"));
 const bridge = cfg.bridge || {};
-const port = bridge.port || 57399;
-const upstream = bridge.upstream || "http://127.0.0.1:57321";
-if (!cfg.apiKey) {
+const providerMeta = getProvider(cfg.provider || cfg.visionProvider || "");
+const defaultModel = getDefaultModel(providerMeta)?.id || "glm-4.6v";
+const defaultEndpoint = providerMeta?.endpoint || "https://open.bigmodel.cn/api/paas/v4/chat/completions";
+const existingBridge = existsSync(BRIDGE_CONFIG)
+  ? (() => { try { return JSON.parse(readFileSync(BRIDGE_CONFIG, "utf8")); } catch { return {}; } })()
+  : {};
+const port = bridge.port || existingBridge.port || 57399;
+const upstream = bridge.upstream || existingBridge.upstream || "http://127.0.0.1:57321";
+if (!cfg.apiKey && !cfg.visionApiKey && !providerMeta?.local) {
   console.error("未配置视觉 API Key，先运行 node scripts/setup.mjs");
   process.exit(1);
 }
@@ -60,14 +67,17 @@ writeFileSync(
   BRIDGE_CONFIG,
   JSON.stringify(
     {
-      listen: bridge.listen || "127.0.0.1",
+      ...existingBridge,
+      listen: bridge.listen || existingBridge.listen || "127.0.0.1",
       port,
-      upstream,
-      visionProvider: "zhipu",
-      visionApiKey: cfg.apiKey,
-      visionBaseUrl: cfg.baseUrl,
-      visionModel: cfg.model,
-      visionPrompt: cfg.prompt,
+      upstream: bridge.upstream || existingBridge.upstream || upstream,
+      visionProvider: cfg.provider || cfg.visionProvider || existingBridge.visionProvider || "zhipu",
+      visionApiKey: cfg.apiKey || cfg.visionApiKey || existingBridge.visionApiKey || "",
+      visionBaseUrl: cfg.baseUrl || cfg.visionBaseUrl || existingBridge.visionBaseUrl || defaultEndpoint,
+      visionAccountId: cfg.accountId || cfg.visionAccountId || existingBridge.visionAccountId || "",
+      visionModel: cfg.model || cfg.visionModel || existingBridge.visionModel || defaultModel,
+      visionPrompt: cfg.prompt || existingBridge.visionPrompt || "请完整描述这张图片：可见文字（OCR）、主体、场景、布局、颜色。用中文回答。",
+      visionTimeoutMs: cfg.timeoutMs || existingBridge.visionTimeoutMs,
     },
     null,
     2,

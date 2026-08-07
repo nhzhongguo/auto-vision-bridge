@@ -167,7 +167,8 @@ Copy `bridge/config.example.json` → `bridge/config.json` and fill in the key f
   "listen": "127.0.0.1",
   "port": 57399,
   "upstream": "http://127.0.0.1:57321",
-  "zhipuApiKey": "your vision API key here",
+  "visionProvider": "zhipu",
+  "visionApiKey": "your vision API key here",
   "visionBaseUrl": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
   "visionModel": "glm-4.6v"
 }
@@ -264,10 +265,23 @@ Once connected, your client gets three tools: `analyze_image` (understand an ima
 | Groq | `GROQ_API_KEY` | `llama-3.2-11b-vision-preview` · `llama-3.2-90b-vision-preview` |
 | OpenRouter | `OPENROUTER_API_KEY` | `Qwen/Qwen2.5-VL-7B-Instruct:free` and other `:free` models |
 | GitHub Models | `GITHUB_TOKEN` | `gpt-4o-mini` · `gpt-4o` · `Llama-3.2-11B-Vision-Instruct` |
+| Local Ollama | No key | `moondream` (lightweight default) · `qwen2.5vl:3b` · `qwen2.5vl:7b` |
 | Google Gemini | `GEMINI_API_KEY` | `gemini-2.5-flash` · `gemini-2.0-flash` |
 | Cloudflare Workers AI | `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` | `@cf/meta/llama-3.2-11b-vision-instruct` etc. |
 
 > ⚠️ Note: `glm-4.7`, `glm-4.5-air` etc. are **text-only models** — don't use them as vision models (they're already in the Bridge's blacklist).
+
+### Local open-source vision model (no API key)
+
+The Bridge can call an open-source vision model running in local Ollama. It converts the image to text first, then sends that text to the original model that does not support images. Ollama downloads the weights locally; they are not stored in Git:
+
+```powershell
+# Install Ollama first: https://ollama.com/download
+node scripts/install-local-model.mjs
+node scripts/setup.mjs   # choose Local Ollama
+```
+
+The default model is `moondream`; `qwen2.5vl:3b` and `qwen2.5vl:7b` are also available. The default local endpoint is `http://127.0.0.1:11434`.
 
 ---
 
@@ -302,7 +316,10 @@ auto-vision-bridge/
 | `listen` | `127.0.0.1` | Bind address (keep default for local use) |
 | `port` | `57399` | Listen port |
 | `upstream` | `http://127.0.0.1:57321` | Upstream model service URL (no `/v1`) |
-| `zhipuApiKey` | `""` | Vision model API key (any OpenAI-compatible vision endpoint works) |
+| `visionProvider` | `zhipu` | Vision provider: `zhipu` / `siliconflow` / `groq` / `openrouter` / `github` / `ollama` / `gemini` / `cloudflare` |
+| `visionApiKey` | `""` | Vision model API key; Cloudflare may also use `CLOUDFLARE_API_TOKEN` |
+| `visionAccountId` | `""` | Required only for Cloudflare, equivalent to `CLOUDFLARE_ACCOUNT_ID` |
+| `allowPrivateImageUrls` | `false` | Allow the bridge to fetch private/loopback images; keep false by default to prevent SSRF |
 | `visionBaseUrl` | Zhipu GLM-4.6V endpoint | Vision model API URL |
 | `visionModel` | `glm-4.6v` | Vision model name |
 | `visionPrompt` | built-in Chinese prompt | Prompt that makes the vision model "describe the image fully, including OCR" |
@@ -364,7 +381,7 @@ Change `provider`, `model`, `baseUrl`, and `apiKey`, then run `node scripts/doct
 | I want a model to **always pass through / always convert** | Add the model name to `visionModels` or `nonVisionModels` in `bridge/config.json`, then restart |
 | Config changes have no effect | Restart the Bridge process (config is read only at startup) |
 | Client says "**this model does not support image input**" | Codex/cc-switch: the Bridge auto-fixes the model catalog on startup (adds `image` to `input_modalities` for every model, and re-fixes it after every model switch). Restart the client after the fix. Other clients: use `modelAliases` to map a vision-capable name (e.g. `gpt-4o`) to your real model, and the Bridge will force image-to-text conversion. |
-| "**API Key not configured**" when sending an image | `zhipuApiKey` in `bridge/config.json` is still a placeholder. Run `node scripts/setup.mjs` or fill it in manually, then restart the Bridge. |
+| "**API Key not configured**" when sending an image | `visionApiKey` in `bridge/config.json` is still a placeholder. Run `node scripts/setup.mjs` or fill it in manually, then restart the Bridge. |
 | Port already in use on startup | The Bridge is probably already running (the start script detects this and skips). To change the port, edit `port` in `bridge/config.json` and restart. |
 | `doctor.mjs` / `test-bridge.mjs` tests blocked by upstream 401 | The scripts now auto-read `experimental_bearer_token` from Codex `config.toml`; if absent they warn and fall back to a placeholder Key |
 | `[catalog修复]` keeps failing to find the model catalog | If `model_catalog_json` in `config.toml` is an absolute path, the Bridge now uses it directly instead of joining it onto the home dir again (double-path fix) |

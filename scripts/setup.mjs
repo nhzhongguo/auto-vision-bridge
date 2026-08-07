@@ -82,8 +82,11 @@ function askSecret(question) {
 askSecret.muted = false;
 
 function providerEndpoint(provider, model, accountId = "") {
+  if (provider.endpoint.includes("{account}") && !accountId) {
+    throw new Error(`${provider.name} 需要 Account ID，请重新运行向导并填写 Cloudflare Account ID`);
+  }
   return provider.endpoint
-    .replace("{model}", encodeURIComponent(model))
+    .replace("{model}", encodeURIComponent(model).replace(/%2F/gi, "/"))
     .replace("{account}", encodeURIComponent(accountId));
 }
 
@@ -189,10 +192,6 @@ async function testVision(config, provider, model) {
     console.log("\n⏭️ 当前模型未确认支持视觉，已跳过联网测试（不会拿纯文本模型试错）。");
     return false;
   }
-  if (provider.style === "cloudflare") {
-    console.log("\n⏭️ Cloudflare Workers AI 使用专用请求格式，本向导暂不自动发送测试请求；配置已保存，请按服务商文档确认额度与视觉输入格式。");
-    return false;
-  }
 
   console.log(`\n正在验证视觉模型 ${model.id}（仅发送 1×1 测试图）...`);
   try {
@@ -200,7 +199,7 @@ async function testVision(config, provider, model) {
     let body;
     let headers = { "content-type": "application/json" };
     if (provider.style === "gemini") {
-      url = providerEndpoint(provider, model.id);
+      url = providerEndpoint(provider, model.id, config.accountId);
       url += `${url.includes("?") ? "&" : "?"}key=${encodeURIComponent(config.apiKey)}`;
       body = {
         contents: [{
@@ -208,6 +207,18 @@ async function testVision(config, provider, model) {
           parts: [
             { text: "用一句话描述这张图片" },
             { inline_data: { mime_type: "image/png", data: TINY_PNG_B64 } },
+          ],
+        }],
+      };
+    } else if (provider.style === "cloudflare") {
+      url = providerEndpoint(provider, model.id, config.accountId);
+      headers.authorization = `Bearer ${config.apiKey}`;
+      body = {
+        messages: [{
+          role: "user",
+          content: [
+            { type: "image_url", image_url: { url: `data:image/png;base64,${TINY_PNG_B64}` } },
+            { type: "text", text: "用一句话描述这张图片" },
           ],
         }],
       };
@@ -222,7 +233,7 @@ async function testVision(config, provider, model) {
           ],
         }],
       };
-      headers.authorization = `Bearer ${config.apiKey}`;
+      if (config.apiKey) headers.authorization = `Bearer ${config.apiKey}`;
     }
 
     const resp = await fetch(url, {
@@ -238,7 +249,9 @@ async function testVision(config, provider, model) {
     }
     const text = provider.style === "gemini"
       ? (data?.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("").trim()
-      : data?.choices?.[0]?.message?.content ?? "";
+      : provider.style === "cloudflare"
+        ? data?.result?.response ?? ""
+        : data?.choices?.[0]?.message?.content ?? "";
     if (!text) throw new Error("返回内容为空");
     console.log(`✅ 视觉模型验证成功：${String(text).slice(0, 120)}`);
     return true;
@@ -280,12 +293,17 @@ async function main() {
   if (provider.id === "cloudflare") {
     accountId = await ask("输入 Cloudflare Account ID：");
   }
-  const apiKey = await askSecret("粘贴你的 API Key（不会回显，粘贴后回车）：");
-  if (!apiKey || /在这里填|your[_-]?api[_-]?key|example/i.test(apiKey)) {
-    console.log("\n未输入有效的 API Key，已取消。");
-    rl.close();
-    process.exitCode = 1;
-    return;
+  let apiKey = "";
+  if (provider.local) {
+    console.log("\n本地 Ollama 模式不需要 API Key。请确认已安装 Ollama 并已拉取所选模型。");
+  } else {
+    apiKey = await askSecret("粘贴你的 API Key（不会回显，粘贴后回车）：");
+    if (!apiKey || /在这里填|your[_-]?api[_-]?key|example/i.test(apiKey)) {
+      console.log("\n未输入有效的 API Key，已取消。");
+      rl.close();
+      process.exitCode = 1;
+      return;
+    }
   }
 
   const useBridge = FORCE_BRIDGE
@@ -312,7 +330,7 @@ async function main() {
     ...example,
     provider: provider.id,
     apiKey,
-    baseUrl: selected.endpoint || providerEndpoint(provider, model.id, accountId),
+    baseUrl: provider.custom ? selected.endpoint : providerEndpoint(provider, model.id, accountId),
     model: model.id,
     modelBilling: model.billing,
     modelBillingNote: model.note,

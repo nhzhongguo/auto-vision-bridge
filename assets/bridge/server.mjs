@@ -13,17 +13,24 @@
  */
 import http from "node:http";
 import { createHash } from "node:crypto";
-import { appendFileSync, readFileSync } from "node:fs";
-import { join, dirname, isAbsolute } from "node:path";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { join, dirname, isAbsolute, basename } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { watch, writeFileSync } from "node:fs";
 import os from "node:os";
+import { isIP } from "node:net";
+import { lookup } from "node:dns/promises";
 
 // 统一配置模块
 import { getBridgeConfig, reloadConfig, watchConfig } from "./config.mjs";
+import { ensureBaseUrl } from "./codex-config.mjs";
+import { resolveVisionProvider, resolveProviderKey, buildVisionEndpoint } from "./providers.mjs";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
+
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+const DEFAULT_ZHIPU_ENDPOINT = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
 
 // 获取配置（支持热重载）
 let cfg = getBridgeConfig();
@@ -65,9 +72,83 @@ function sanitizeModelName(raw) {
   return s;
 }
 
-function fixConfigToml() {
+function codexConfigPath() {
   const home = process.env.CODEX_HOME || join(os.homedir(), ".codex");
-  const tomlPath = join(home, "config.toml");
+  return join(home, "config.toml");
+}
+
+function codexBridgeUrl() {
+  const host = cfg.listen === "0.0.0.0" || cfg.listen === "::" ? "127.0.0.1" : cfg.listen;
+  return `http://${host}:${cfg.port}/v1`;
+}
+
+function backupCodexConfig(tomlPath, text) {
+  const backupPath = tomlPath + ".auto-vision-bridge-backup";
+  if (!existsSync(backupPath)) {
+    try {
+      writeFileSync(backupPath, text, "utf8");
+      log(`[config接线] 已备份 ${backupPath}`);
+    } catch (e) {
+      log(`[config接线] 备份失败：${e.message}`, "warn");
+    }
+  }
+}
+
+function enforceCodexBridgeBaseUrl(silent = false) {
+  const tomlPath = codexConfigPath();
+  let text;
+  try {
+    text = readFileSync(tomlPath, "utf8");
+  } catch (e) {
+    if (!silent) log(`[config接线] 跳过读取 ${tomlPath}：${e.message}`);
+    return false;
+  }
+
+  const target = codexBridgeUrl();
+  const result = ensureBaseUrl(text, target);
+  if (!result.found || !result.changed) return false;
+
+  try {
+    backupCodexConfig(tomlPath, text);
+    writeFileSync(tomlPath, result.text, "utf8");
+    log(`[config接线] 已将 Codex base_url 指向 bridge（${target}）；原文件已备份`);
+    return true;
+  } catch (e) {
+    log(`[config接线] 写回失败：${e.message}`);
+    return false;
+  }
+}
+
+let codexConfigTimer = null;
+let codexConfigWatcher = null;
+let codexConfigPoller = null;
+function scheduleCodexConfigRepair() {
+  clearTimeout(codexConfigTimer);
+  codexConfigTimer = setTimeout(() => {
+    fixConfigToml();
+    enforceCodexBridgeBaseUrl(true);
+  }, 250);
+}
+
+function watchCodexConfig() {
+  const tomlPath = codexConfigPath();
+  try {
+    codexConfigWatcher = watch(dirname(tomlPath), { persistent: false }, (_event, filename) => {
+      if (!filename || basename(String(filename)).toLowerCase() === basename(tomlPath).toLowerCase()) {
+        scheduleCodexConfigRepair();
+      }
+    });
+    log(`[config接线] 已监听 ${tomlPath}，CC Switch 切换模型后自动恢复 bridge 入口`);
+    // CC Switch 可能通过“写临时文件再原子替换”的方式更新 config.toml，
+    // 这类更新在 Windows 上不保证触发原文件的 fs.watch，因此保留低频兜底轮询。
+    codexConfigPoller = setInterval(() => enforceCodexBridgeBaseUrl(true), 1000);
+  } catch (e) {
+    log(`[config接线] 监听失败（不影响主服务）：${e.message}`);
+  }
+}
+
+function fixConfigToml() {
+  const tomlPath = codexConfigPath();
   let text;
   try {
     text = readFileSync(tomlPath, "utf8");
@@ -118,6 +199,7 @@ function fixConfigToml() {
   if (changed) {
     try {
       const newText = out.join(text.includes("\r\n") ? "\r\n" : "\n");
+      backupCodexConfig(tomlPath, text);
       writeFileSync(tomlPath, newText, "utf8");
       log(`[config自修复] config.toml 已修复，共写入 ${out.length} 行`);
     } catch (e) {
@@ -192,9 +274,11 @@ function fixModelCatalog(silent) {
   let changed = false;
   for (const m of cat.models || []) {
     let mods = m.input_modalities;
+    if (mods == null) mods = ["text"];
     if (typeof mods === "string") mods = [mods];
     if (!Array.isArray(mods)) continue;
     if (!mods.includes("image")) {
+      if (!mods.includes("text")) mods = ["text", ...mods];
       mods = [...mods, "image"];
       m.input_modalities = mods;
       fixed.push(m.slug || m.model || "?");
@@ -221,11 +305,15 @@ function scheduleCatalogFix() {
 }
 
 /* ---------------- 日志 ---------------- */
-function log(msg) {
+const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 };
+function log(msg, level = "info") {
+  const current = LOG_LEVELS[cfg.logLevel] ?? LOG_LEVELS.info;
+  if ((LOG_LEVELS[level] ?? LOG_LEVELS.info) < current) return;
   const line = `[${new Date().toISOString()}] ${msg}`;
-  console.log(line);
+  if (level === "error" || level === "warn") console.error(line);
+  else console.log(line);
   try {
-    appendFileSync(cfg.logFile, line + "\n");
+    if (cfg.logFile) appendFileSync(cfg.logFile, line + "\n");
   } catch {}
 }
 
@@ -294,13 +382,114 @@ function walk(node, parent, key, state) {
   }
 }
 
-/* ---------------- 调智谱视觉模型 ---------------- */
-/* 图片 URL 规范化：处理客户端常见的坏格式
- *  - base64 被 URL 编码（%3D/%2B/%0A...）或被插入换行/空白
- *  - http(s) 图片链接：很多客户端发的是带鉴权的临时链接，智谱服务端抓不到。
- *    这里由 bridge 自己取回图片转成 data URL 再发给智谱，保证能用。
- *    取回时带上原请求的 authorization 头（若是同一来源的临时链接）。
+/* ---------------- 调视觉模型（多服务商） ---------------- */
+/* 图片 URL 规范化：处理客户端常见的坏格式。
+ * 远程图片由 bridge 下载后转成 data URL，避免把请求方的 Authorization
+ * 转发给任意第三方；默认阻止内网/本机/云元数据地址（SSRF）。
  */
+function dataUrlParts(url) {
+  const m = /^data:([^;,]+);base64,(.*)$/s.exec(String(url || ""));
+  if (!m) throw new Error("视觉调用仅支持已转换为 data URL 的图片");
+  return { mime: m[1], data: m[2] };
+}
+
+function isPrivateIpv4(ip) {
+  const parts = String(ip).split(".").map(Number);
+  if (parts.length !== 4 || parts.some((n) => Number.isNaN(n) || n < 0 || n > 255)) return false;
+  const [a, b] = parts;
+  return (
+    a === 0 || a === 10 || a === 127 ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 198 && (b === 18 || b === 19)) ||
+    a >= 224
+  );
+}
+
+function isPrivateIpv6(ip) {
+  const lower = String(ip).toLowerCase();
+  if (lower === "::" || lower === "::1") return true;
+  if (lower.startsWith("fe8") || lower.startsWith("fe9") || lower.startsWith("fea") || lower.startsWith("feb")) return true;
+  if (lower.startsWith("fc") || lower.startsWith("fd")) return true;
+  if (lower.startsWith("::ffff:")) return isPrivateIpv4(lower.slice(7));
+  return false;
+}
+
+function isPrivateAddress(address) {
+  if (isIP(address) === 4) return isPrivateIpv4(address);
+  if (isIP(address) === 6) return isPrivateIpv6(address);
+  return false;
+}
+
+async function isPrivateTarget(rawUrl) {
+  let u;
+  try {
+    u = new URL(rawUrl);
+  } catch {
+    throw new Error("图片 URL 无效");
+  }
+  if (!/^https?:$/i.test(u.protocol)) throw new Error("仅支持 http(s) 图片 URL");
+  const host = u.hostname.replace(/\.$/, "").toLowerCase();
+  if (/(^|\.)(localhost|localhost\.localdomain|ip6-localhost|ip6-loopback|metadata\.google\.internal|metadata\.google\.compute)$/.test(host)) return true;
+  if (isIP(host) && isPrivateAddress(host)) return true;
+  if (!isIP(host)) {
+    const addresses = await lookup(host, { all: true, verbatim: true }).catch(() => []);
+    if (addresses.some((entry) => isPrivateAddress(entry.address))) return true;
+  }
+  return false;
+}
+
+async function assertPublicImageUrl(rawUrl) {
+  if (cfg.allowPrivateImageUrls) return;
+  if (await isPrivateTarget(rawUrl)) {
+    throw new Error("不允许访问内网/本机地址，如需内网图片请设置 allowPrivateImageUrls=true");
+  }
+}
+
+function sameOriginAsUpstream(rawUrl) {
+  try {
+    return new URL(rawUrl).origin === new URL(cfg.upstream).origin;
+  } catch {
+    return false;
+  }
+}
+
+function requestAuthHeader(authHeaders) {
+  return (authHeaders && (authHeaders.authorization || authHeaders.Authorization)) || "";
+}
+
+async function fetchImageData(rawUrl, authHeaders) {
+  let current = rawUrl;
+  for (let hops = 0; hops <= 5; hops++) {
+    await assertPublicImageUrl(current);
+    const auth = cfg.allowPrivateImageUrls && sameOriginAsUpstream(current) ? requestAuthHeader(authHeaders) : "";
+    const headers = {};
+    if (auth) headers.authorization = auth;
+    const r = await fetch(current, { headers, redirect: "manual", signal: AbortSignal.timeout(20000) });
+    if ([301, 302, 303, 307, 308].includes(r.status)) {
+      const loc = r.headers.get("location");
+      if (!loc) throw new Error("图片重定向缺少 Location");
+      current = new URL(loc, current).toString();
+      continue;
+    }
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const contentLength = Number(r.headers.get("content-length") || 0);
+    if (contentLength > MAX_IMAGE_BYTES) throw new Error(`图片超过 ${Math.round(MAX_IMAGE_BYTES / 1024 / 1024)}MB 限制`);
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (buf.length > MAX_IMAGE_BYTES) throw new Error(`图片超过 ${Math.round(MAX_IMAGE_BYTES / 1024 / 1024)}MB 限制`);
+    if (!buf.length) throw new Error("空响应");
+    const ct = (r.headers.get("content-type") || "image/png").split(";")[0].trim().toLowerCase();
+    if (!ct.startsWith("image/") && !ct.includes("octet-stream")) {
+      log(`[图片] 注意：${current} 的 content-type 是 ${ct}，仍按图片尝试`);
+    }
+    log(`[图片] 已从链接取回图片：${current.slice(0, 90)}…（${buf.length} 字节, ${ct}）`);
+    return `data:${ct.startsWith("image/") ? ct : "image/png"};base64,${buf.toString("base64")}`;
+  }
+  throw new Error("图片重定向次数过多");
+}
+
 async function normalizeImageUrl(url, authHeaders) {
   if (typeof url !== "string") return url;
   let u = url.trim();
@@ -311,29 +500,15 @@ async function normalizeImageUrl(url, authHeaders) {
       try { payload = decodeURIComponent(payload); } catch {}
     }
     payload = payload.replace(/\s+/g, "").replace(/[^A-Za-z0-9+/=]/g, "");
+    const buf = Buffer.from(payload, "base64");
+    if (buf.length > MAX_IMAGE_BYTES) throw new Error(`图片超过 ${Math.round(MAX_IMAGE_BYTES / 1024 / 1024)}MB 限制`);
     return u.slice(0, idx + 8) + payload;
   }
   if (/%[0-9a-fA-F]{2}/.test(u)) {
     try { u = decodeURIComponent(u); } catch {}
   }
   if (/^https?:\/\//i.test(u)) {
-    try {
-      const headers = {};
-      const auth = (authHeaders && (authHeaders.authorization || authHeaders.Authorization)) || "";
-      if (auth) headers.authorization = auth;
-      const r = await fetch(u, { headers, signal: AbortSignal.timeout(20000) });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const buf = Buffer.from(await r.arrayBuffer());
-      if (!buf.length) throw new Error("空响应");
-      const ct = (r.headers.get("content-type") || "image/png").split(";")[0].trim().toLowerCase();
-      if (!ct.startsWith("image/") && !ct.includes("octet-stream")) {
-        log(`[图片] 注意：${u} 的 content-type 是 ${ct}，仍按图片尝试`);
-      }
-      log(`[图片] 已从链接取回图片：${u.slice(0, 90)}…（${buf.length} 字节, ${ct}）`);
-      return `data:${ct.startsWith("image/") ? ct : "image/png"};base64,${buf.toString("base64")}`;
-    } catch (e) {
-      log(`[图片] 链接取回失败 ${u.slice(0, 90)}…：${e.message}，改由智谱直接抓取`);
-    }
+    return fetchImageData(u, authHeaders);
   }
   return u;
 }
@@ -353,64 +528,140 @@ function modelSupportsVision(model) {
   // 4) 未知模型 -> 按不支持处理，自动转文字（最稳妥，不会报错）
   return false;
 }
-async function describeImage(url, attempt = 1) {
-  // 兼容新配置字段 visionApiKey 与旧字段 zhipuApiKey。
-  const visionApiKey = cfg.visionApiKey || cfg.zhipuApiKey || "";
-  if (!visionApiKey || /在这里填|your[_-]?api[_-]?key|example/i.test(visionApiKey)) {
+
+function getVisionProvider() {
+  return resolveVisionProvider(cfg.visionProvider) || resolveVisionProvider("zhipu");
+}
+
+function getVisionApiKey(provider) {
+  if (provider.requiresKey === false) return "";
+  if (String(cfg.visionProvider || "").toLowerCase() === provider.id) {
+    const explicit = cfg.visionApiKey || cfg.zhipuApiKey || "";
+    if (explicit) return explicit;
+  }
+  return resolveProviderKey(provider);
+}
+
+function visionModelFor(provider) {
+  const configured = String(cfg.visionModel || "").trim();
+  if (configured && String(cfg.visionProvider || "").toLowerCase() === provider.id) return configured;
+  return provider.model;
+}
+
+function visionEndpointFor(provider, model) {
+  const isPrimary = String(cfg.visionProvider || "").toLowerCase() === provider.id;
+  const base = String(cfg.visionBaseUrl || "").trim();
+  const hasPlaceholders = base.includes("{model}") || base.includes("{account}");
+  const isDefaultZhipu = base === DEFAULT_ZHIPU_ENDPOINT;
+  if (isPrimary && base && !hasPlaceholders && !(isDefaultZhipu && provider.id !== "zhipu")) return base;
+  return buildVisionEndpoint(provider, model, cfg.visionAccountId);
+}
+
+function parseOpenAIAnswer(data) {
+  let text = data?.choices?.[0]?.message?.content ?? "";
+  if (Array.isArray(text)) {
+    text = text
+      .map((p) => (typeof p === "string" ? p : p?.text ?? ""))
+      .join("")
+      .trim();
+  }
+  return String(text).trim();
+}
+
+async function callVisionProvider(url, provider, attempt = 1) {
+  const apiKey = getVisionApiKey(provider);
+  if (provider.requiresKey !== false && (!apiKey || /在这里填|your[_-]?api[_-]?key|example/i.test(apiKey))) {
     throw new Error(
-      "未配置有效的视觉模型 API Key（bridge/config.json 的 visionApiKey）。" +
-      "请运行 node scripts/setup.mjs 交互式配置，或手动把 Key 填进 bridge/config.json 后重启 bridge。"
+      `未配置有效的视觉模型 API Key（${provider.name}）。请设置 config.json 的 visionApiKey，` +
+      "或运行 node scripts/setup.mjs 交互式配置。"
     );
   }
-  const payload = {
-    model: cfg.visionModel,
-    temperature: 0.2,
-    messages: [
-      {
+  if (!/^data:/.test(url)) {
+    throw new Error("远程图片下载失败或地址不被允许，已停止识别");
+  }
+
+  const model = visionModelFor(provider);
+  const endpoint = visionEndpointFor(provider, model);
+  const { mime, data } = dataUrlParts(url);
+  let payload;
+  let headers;
+  let finalUrl = endpoint;
+
+  if (provider.style === "gemini") {
+    payload = {
+      contents: [{
+        role: "user",
+        parts: [
+          { text: cfg.visionPrompt },
+          { inline_data: { mime_type: mime, data } },
+        ],
+      }],
+    };
+    headers = { "content-type": "application/json" };
+    finalUrl += `${finalUrl.includes("?") ? "&" : "?"}key=${encodeURIComponent(apiKey)}`;
+  } else if (provider.style === "cloudflare") {
+    payload = {
+      messages: [{
         role: "user",
         content: [
-          { type: "image_url", image_url: { url } },
           { type: "text", text: cfg.visionPrompt },
+          { type: "image_url", image_url: { url } },
         ],
-      },
-    ],
-  };
+      }],
+    };
+    headers = { "content-type": "application/json", authorization: `Bearer ${apiKey}` };
+  } else {
+    payload = {
+      model,
+      temperature: 0.2,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "image_url", image_url: { url } },
+            { type: "text", text: cfg.visionPrompt },
+          ],
+        },
+      ],
+    };
+    headers = { "content-type": "application/json" };
+    if (apiKey) headers.authorization = `Bearer ${apiKey}`;
+  }
+
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), cfg.visionTimeoutMs);
   try {
-    const visionUrl = cfg.visionBaseUrl || "https://open.bigmodel.cn/api/paas/v4/chat/completions";
-    const resp = await fetch(visionUrl, {
+    const resp = await fetch(finalUrl, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${visionApiKey}`,
-      },
+      headers,
       body: JSON.stringify(payload),
       signal: ac.signal,
     });
     if (!resp.ok) {
-      // 5xx 服务端抖动：重试一次
       if (resp.status >= 500 && attempt < 2) {
-        log(`[图片] 智谱 HTTP ${resp.status}，重试一次...`);
-        return describeImage(url, attempt + 1);
+        log(`[图片] ${provider.name} HTTP ${resp.status}，重试一次...`);
+        return callVisionProvider(url, provider, attempt + 1);
       }
-      throw new Error(`智谱 HTTP ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+      throw new Error(`${provider.name} HTTP ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
     }
-    const data = await resp.json();
-    let text = data?.choices?.[0]?.message?.content ?? "";
-    if (Array.isArray(text)) {
-      text = text
-        .map((p) => (typeof p === "string" ? p : p?.text ?? ""))
+    const result = await resp.json();
+    let text;
+    if (provider.style === "gemini") {
+      text = (result?.candidates?.[0]?.content?.parts ?? [])
+        .map((p) => p.text ?? "")
         .join("")
         .trim();
+    } else if (provider.style === "cloudflare") {
+      text = String(result?.result?.response ?? "").trim();
+    } else {
+      text = parseOpenAIAnswer(result);
     }
-    if (!text) throw new Error("智谱返回空内容");
-    return String(text).trim();
+    if (!text) throw new Error(`${provider.name} 返回空内容`);
+    return text;
   } catch (e) {
-    // 超时：重试一次（大截图偶尔需要更久）
     if (e.name === "AbortError" && attempt < 2) {
       log(`[图片] 识别超时（${cfg.visionTimeoutMs}ms），重试一次...`);
-      return describeImage(url, attempt + 1);
+      return callVisionProvider(url, provider, attempt + 1);
     }
     throw e;
   } finally {
@@ -418,7 +669,30 @@ async function describeImage(url, attempt = 1) {
   }
 }
 
-/* ---------------- 替换图片为文字 ---------------- */
+async function describeImage(url, attempt = 1) {
+  const primary = getVisionProvider();
+  const errors = [];
+  try {
+    return await callVisionProvider(url, primary, attempt);
+  } catch (e) {
+    errors.push(`${primary.name}: ${e.message}`);
+    log(`[图片] 主视觉服务识别失败：${e.message}`);
+  }
+  for (const item of cfg.fallbackVisionProviders || []) {
+    const fallbackId = typeof item === "string" ? item : item?.provider;
+    const fallback = resolveVisionProvider(fallbackId);
+    if (!fallback || fallback.id === primary.id) continue;
+    try {
+      log(`[图片] 尝试备用视觉服务：${fallback.name}`);
+      return await callVisionProvider(url, fallback, 1);
+    } catch (e) {
+      errors.push(`${fallback.name}: ${e.message}`);
+      log(`[图片] 备用视觉服务失败：${e.message}`);
+    }
+  }
+  throw new Error(errors.join("；"));
+}
+
 function labelFor(urls, url, descs, normMap) {
   const norm = (normMap && normMap.get(url)) || url;
   const idx = urls.indexOf(norm) + 1;
@@ -448,9 +722,15 @@ async function processBody(body, authHeaders) {
 
   // 规范化（URL 解码/去空白/本地图取回），并记录 原始URL -> 规范化URL 映射
   const normMap = new Map();
+  const failedImages = new Map();
   for (let i = 0; i < urls.length; i++) {
     const before = urls[i];
-    urls[i] = await normalizeImageUrl(urls[i], authHeaders);
+    try {
+      urls[i] = await normalizeImageUrl(urls[i], authHeaders);
+    } catch (e) {
+      failedImages.set(before, `[图片识别失败：${e.message}]`);
+      log(`[图片] 规范化失败 ${before.slice(0, 90)}…：${e.message}`);
+    }
     if (!normMap.has(before)) normMap.set(before, urls[i]);
   }
   const uniq = [];
@@ -467,6 +747,11 @@ async function processBody(body, authHeaders) {
   let converted = 0;
   for (let i = 0; i < urls.length; i++) {
     const u = urls[i];
+    if (failedImages.has(u)) {
+      descs.set(u, failedImages.get(u));
+      converted++;
+      continue;
+    }
     const hit = cacheGet(u);
     if (hit !== null) {
       descs.set(u, hit);
@@ -633,6 +918,14 @@ async function pipeWithNotice(res, body, notice, isRespApi) {
   });
 }
 
+process.on("uncaughtException", (e) => {
+  log("[uncaughtException 已捕获，进程不退出] " + (e.stack || e.message), "error");
+});
+process.on("unhandledRejection", (reason, promise) => {
+  const m = reason instanceof Error ? (reason.stack || reason.message) : String(reason);
+  log("[unhandledRejection 已捕获] " + m, "error");
+});
+
 /* ---------------- HTTP 服务 ---------------- */
 const server = http.createServer(async (req, res) => {
   const start = Date.now();
@@ -656,13 +949,26 @@ const server = http.createServer(async (req, res) => {
     }
 
     // 读请求体
-    let raw = "";
+    const chunks = [];
+    let bodySize = 0;
+    let bodyTooLarge = false;
     if (["POST", "PUT", "PATCH"].includes(req.method)) {
       for await (const chunk of req) {
-        raw += chunk;
-        if (raw.length > cfg.maxRequestBodySize) break;
+        bodySize += chunk.length;
+        if (bodySize > cfg.maxRequestBodySize) {
+          bodyTooLarge = true;
+          break;
+        }
+        chunks.push(chunk);
       }
     }
+    if (bodyTooLarge) {
+      req.resume();
+      if (!res.headersSent) res.writeHead(413, { "content-type": "application/json; charset=utf-8" });
+      res.end(JSON.stringify({ error: { message: "请求体超过 maxRequestBodySize 限制" } }));
+      return;
+    }
+    const raw = Buffer.concat(chunks).toString("utf8");
 
     // 解析并替换图片
     let body = null;
@@ -781,17 +1087,7 @@ const server = http.createServer(async (req, res) => {
   } catch (e) {
     log(`处理异常：${e.stack || e.message}`);
     try {
-      if (!res.headersSent) res.writ
-
-process.on("uncaughtException", (e) => {
-  log("[uncaughtException 已捕获，进程不退出] " + (e.stack || e.message));
-});
-process.on("unhandledRejection", (reason, promise) => {
-  const m = reason instanceof Error ? (reason.stack || reason.message) : String(reason);
-  log("[unhandledRejection 已捕获] " + m);
-});
-
-eHead(500, { "content-type": "application/json; charset=utf-8" });
+      if (!res.headersSent) res.writeHead(500, { "content-type": "application/json; charset=utf-8" });
       res.end(JSON.stringify({ error: { message: "vision-bridge 内部错误：" + e.message } }));
     } catch {}
   }
@@ -811,8 +1107,10 @@ server.listen(cfg.port, cfg.listen, () => {
   log(`vision-bridge 已启动：http://${cfg.listen}:${cfg.port} -> 上游 ${cfg.upstream}`);
 });
 
-// 启动即修复一次模型目录，并监听后续被 cc-switch 等工具覆盖的情况
+// 启动即修复一次客户端接线和模型目录，并监听后续被 cc-switch 等工具覆盖的情况
 fixConfigToml();
+enforceCodexBridgeBaseUrl(false);
+watchCodexConfig();
 fixModelCatalog(false);
 try {
   watch(codexCatalogPath(), { persistent: false }, (evt) => {
@@ -824,6 +1122,10 @@ try {
 }
 
 function shutdown() {
+  if (codexConfigTimer) clearTimeout(codexConfigTimer);
+  if (codexConfigWatcher) codexConfigWatcher.close();
+  if (fixTimer) clearTimeout(fixTimer);
+  if (codexConfigPoller) clearInterval(codexConfigPoller);
   log("vision-bridge 退出");
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 1000).unref();

@@ -13,6 +13,9 @@ assert.doesNotMatch(installSource, /^#!\/usr\/bin\/env node\\n/);
 assert.match(installSource, /--provider <id>/);
 assert.match(installSource, /--model <id>/);
 assert.match(installSource, /preservedConfig/);
+assert.match(installSource, /COPY_DIRS\s*=\s*\[\s*"scripts"\s*,\s*"bridge"/);
+assert.match(installSource, /process\.env\.CODEX_HOME \|\| homedir\(\)/);
+assert.match(installSource, /preservedConfigs/);
 
 for (const [script, expected] of [
   ["scripts/install-skill.mjs", "API Key 始终在安全提示中输入"],

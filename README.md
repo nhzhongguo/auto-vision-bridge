@@ -167,7 +167,8 @@ node scripts/setup.mjs
   "listen": "127.0.0.1",
   "port": 57399,
   "upstream": "http://127.0.0.1:57321",
-  "zhipuApiKey": "在这里填你的视觉模型 API Key",
+  "visionProvider": "zhipu",
+  "visionApiKey": "在这里填你的视觉模型 API Key",
   "visionBaseUrl": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
   "visionModel": "glm-4.6v"
 }
@@ -258,7 +259,7 @@ node scripts/install-skill.mjs --provider zhipu --model glm-4.6v
 
 **Q：发图后提示「未配置有效的视觉模型 API Key」？**
 
-说明 `bridge/config.json` 里的 `zhipuApiKey` 还是占位符。运行 `node scripts/setup.mjs` 交互式配置（静默输入，不回显），或手动填写后重启 Bridge。
+说明 `bridge/config.json` 里的 `visionApiKey` 还是占位符。运行 `node scripts/setup.mjs` 交互式配置（静默输入，不回显），或手动填写后重启 Bridge。
 
 **Q：启动时提示端口被占用？**
 
@@ -313,10 +314,23 @@ npm run build        # 编译到 dist/
 | Groq | `GROQ_API_KEY` | `llama-3.2-11b-vision-preview` · `llama-3.2-90b-vision-preview` |
 | OpenRouter | `OPENROUTER_API_KEY` | `Qwen/Qwen2.5-VL-7B-Instruct:free` 等 `:free` 模型 |
 | GitHub Models | `GITHUB_TOKEN` | `gpt-4o-mini` · `gpt-4o` · `Llama-3.2-11B-Vision-Instruct` |
+| 本地 Ollama | 无需 Key | `moondream`（轻量默认）· `qwen2.5vl:3b` · `qwen2.5vl:7b` |
 | Google Gemini | `GEMINI_API_KEY` | `gemini-2.5-flash` · `gemini-2.0-flash` |
 | Cloudflare Workers AI | `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` | `@cf/meta/llama-3.2-11b-vision-instruct` 等 |
 
 > ⚠️ 注意：`glm-4.7`、`glm-4.5-air` 等是**纯文本模型**，不要把它们当视觉模型用（Bridge 的黑名单里已经内置了这些）。
+
+### 本地开源视觉模型（无需 API Key）
+
+Bridge 可以调用本机 Ollama 的开源视觉模型，把图片先识别成文字，再交给原本不支持图片的模型继续回答。模型权重由 Ollama 下载到本机，不会放进 Git：
+
+```powershell
+# 先安装 Ollama：https://ollama.com/download
+node scripts/install-local-model.mjs
+node scripts/setup.mjs   # 选择“本地 Ollama 开源视觉模型”
+```
+
+默认模型是 `moondream`，也可以拉取 `qwen2.5vl:3b` 或 `qwen2.5vl:7b`。本地服务默认地址是 `http://127.0.0.1:11434`。
 
 ---
 
@@ -347,7 +361,10 @@ auto-vision-bridge/
 | `listen` | `127.0.0.1` | 监听地址（本机用默认即可） |
 | `port` | `57399` | 监听端口 |
 | `upstream` | `http://127.0.0.1:57321` | 上游模型服务地址（不带 `/v1`） |
-| `zhipuApiKey` | `""` | 视觉模型 API Key（支持任意 OpenAI 兼容视觉端点） |
+| `visionProvider` | `zhipu` | 视觉服务商：`zhipu` / `siliconflow` / `groq` / `openrouter` / `github` / `ollama` / `gemini` / `cloudflare` |
+| `visionApiKey` | `""` | 视觉模型 API Key；Cloudflare 也可用 `CLOUDFLARE_API_TOKEN` |
+| `visionAccountId` | `""` | 仅 Cloudflare 需要，对应 `CLOUDFLARE_ACCOUNT_ID` |
+| `allowPrivateImageUrls` | `false` | 是否允许 bridge 主动抓取内网/本机图片；默认关闭以防范 SSRF |
 | `visionBaseUrl` | 智谱 GLM-4.6V 端点 | 视觉模型接口地址 |
 | `visionModel` | `glm-4.6v` | 视觉模型名 |
 | `visionPrompt` | 内置中文提示词 | 让视觉模型"完整描述图片，含 OCR"的提示词 |

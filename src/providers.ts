@@ -3,7 +3,7 @@
  * 每个提供商声明：Key 环境变量、端点、模型清单（免费与否 + 说明）
  * 调用入口 callProvider() 按 provider.style 分发到对应客户端。
  */
-import { chatGemini, chatOpenAICompat, type VisionChatResult } from "./client.js";
+import { chatGemini, chatOpenAICompat, chatCloudflare, type VisionChatResult } from "./client.js";
 
 export interface ProviderModel {
   id: string;
@@ -18,7 +18,8 @@ export interface Provider {
   keyEnv: string[];
   keyLabel: string;
   endpoint: string;
-  style: "openai" | "gemini";
+  style: "openai" | "gemini" | "cloudflare";
+  local?: boolean;
   accountEnv?: string;
   models: ProviderModel[];
 }
@@ -93,6 +94,20 @@ export const PROVIDERS: Provider[] = [
     ],
   },
   {
+    id: "ollama",
+    name: "本地 Ollama 开源视觉模型",
+    keyEnv: ["OLLAMA_API_KEY"],
+    keyLabel: "无需 API Key，需安装 Ollama：https://ollama.com/download",
+    endpoint: "http://127.0.0.1:11434/v1/chat/completions",
+    style: "openai",
+    local: true,
+    models: [
+      { id: "moondream", free: true, note: "轻量本地识图，CPU 可跑", default: true },
+      { id: "qwen2.5vl:3b", free: true, note: "本地识图更强，需先 ollama pull" },
+      { id: "qwen2.5vl:7b", free: true, note: "更强但更大，需先 ollama pull" },
+    ],
+  },
+  {
     id: "gemini",
     name: "Google Gemini",
     keyEnv: ["GEMINI_API_KEY"],
@@ -111,7 +126,7 @@ export const PROVIDERS: Provider[] = [
     keyLabel: "https://dash.cloudflare.com → Workers AI，每天 1 万 neurons 免费",
     accountEnv: "CLOUDFLARE_ACCOUNT_ID",
     endpoint: "https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/{model}",
-    style: "openai",
+    style: "cloudflare",
     models: [
       { id: "@cf/meta/llama-3.2-11b-vision-instruct", free: true, note: "免费额度内" },
       { id: "@cf/qwen/qwen2.5-vl-7b-instruct", free: true, note: "免费额度内" },
@@ -130,14 +145,18 @@ export function resolveProviderKey(p: Provider): string | undefined {
 
 /** 各 provider 的 Key 配置状态（不泄露 Key 本身） */
 export function providerKeyStatus(): { id: string; name: string; configured: boolean }[] {
-  return PROVIDERS.map((p) => ({ id: p.id, name: p.name, configured: Boolean(resolveProviderKey(p)) }));
+  return PROVIDERS.map((p) => ({
+    id: p.id,
+    name: p.name,
+    configured: p.local ? true : Boolean(resolveProviderKey(p)),
+  }));
 }
 
 /** 根据 endpoint 模板替换 {model} / {account} 占位符 */
 function buildEndpoint(p: Provider, modelId: string): string {
   let ep = p.endpoint;
   if (ep.includes("{model}")) {
-    ep = ep.replace("{model}", encodeURIComponent(modelId));
+    ep = ep.replace("{model}", encodeURIComponent(modelId).replace(/%2F/gi, "/"));
   }
   if (ep.includes("{account}")) {
     const account = process.env[p.accountEnv ?? ""]?.trim();
@@ -214,8 +233,8 @@ export interface CallOpts {
 
 /** 调用指定 provider 的模型（按 style 分发协议） */
 export async function callProvider(ref: ModelRef, opts: CallOpts): Promise<VisionChatResult> {
-  const key = resolveProviderKey(ref.provider);
-  if (!key) {
+  const key = resolveProviderKey(ref.provider) ?? "";
+  if (!key && !ref.provider.local) {
     throw new Error(
       `${ref.provider.name} 未配置 API Key：请设置环境变量 ${ref.provider.keyEnv.join(" 或 ")}（申请入口：${ref.provider.keyLabel}）`,
     );
@@ -231,5 +250,6 @@ export async function callProvider(ref: ModelRef, opts: CallOpts): Promise<Visio
     timeoutMs: opts.timeoutMs,
   };
   if (ref.provider.style === "gemini") return chatGemini({ ...base, endpoint });
+  if (ref.provider.style === "cloudflare") return chatCloudflare({ ...base, endpoint });
   return chatOpenAICompat({ ...base, endpoint });
 }

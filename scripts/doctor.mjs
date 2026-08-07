@@ -53,7 +53,11 @@ const provider = getProvider(providerId);
 const modelBilling = cfg.modelBilling || cfg.visionModelBilling || "unknown";
 const modelBillingNote = cfg.modelBillingNote || cfg.visionModelBillingNote || "未记录价格信息，按可能收费处理";
 const keyStatus = key.length > 8 ? "已配置（不显示 Key）" : "(空)";
-check("视觉 API Key 已配置", key.length > 8, keyStatus);
+if (provider?.local) {
+  check("视觉 API Key 已配置", true, "本地 Ollama 无需 API Key");
+} else {
+  check("视觉 API Key 已配置", key.length > 8, keyStatus);
+}
 check("视觉 API 地址已配置", /^https?:\/\//.test(baseUrl), baseUrl);
 check("视觉模型已配置", !!model, model);
 check(
@@ -67,15 +71,18 @@ if (modelBilling === "paid" || modelBilling === "unknown") {
   check("模型计费标记", modelBilling === "free", "免费额度/免费档（仍可能限流或耗尽额度）");
 }
 
-if (process.argv.includes("--test") && key && baseUrl && model) {
+if (process.argv.includes("--test") && (key || provider?.local) && baseUrl && model) {
   if (modelBilling !== "free" && !process.argv.includes("--force")) {
     warn("视觉模型实测可用", "已跳过：模型不是明确免费档；如确认承担费用，使用 --force");
   } else {
-  if (provider?.style === "cloudflare") {
-    warn("视觉模型实测可用", "已跳过：Cloudflare Workers AI 使用专用协议，当前 doctor 不发送测试请求");
-  } else {
     try {
       let url = baseUrl;
+      const accountId = cfg.accountId || cfg.visionAccountId || "";
+      if (url.includes("{model}")) url = url.replace("{model}", encodeURIComponent(model).replace(/%2F/gi, "/"));
+      if (url.includes("{account}")) {
+        if (!accountId) throw new Error("缺少 Cloudflare Account ID，请运行 node scripts/setup.mjs 重新配置");
+        url = url.replace("{account}", encodeURIComponent(accountId));
+      }
       let body;
       const headers = { "content-type": "application/json" };
       if (provider?.style === "gemini") {
@@ -89,8 +96,19 @@ if (process.argv.includes("--test") && key && baseUrl && model) {
             ],
           }],
         };
-      } else {
+      } else if (provider?.style === "cloudflare") {
         headers.authorization = `Bearer ${key}`;
+        body = {
+          messages: [{
+            role: "user",
+            content: [
+              { type: "image_url", image_url: { url: `data:image/png;base64,${TINY_PNG_B64}` } },
+              { type: "text", text: "用一句话描述这张图片" },
+            ],
+          }],
+        };
+      } else {
+        if (key) headers.authorization = `Bearer ${key}`;
         body = {
           model,
           messages: [{
@@ -111,12 +129,13 @@ if (process.argv.includes("--test") && key && baseUrl && model) {
       const data = await resp.json();
       const text = provider?.style === "gemini"
         ? (data?.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("").trim()
-        : data?.choices?.[0]?.message?.content ?? "";
+        : provider?.style === "cloudflare"
+          ? data?.result?.response ?? ""
+          : data?.choices?.[0]?.message?.content ?? "";
       check("视觉模型实测可用", !!text, String(text).slice(0, 80));
     } catch (e) {
       check("视觉模型实测可用", false, e.message);
     }
-  }
   }
 }
 

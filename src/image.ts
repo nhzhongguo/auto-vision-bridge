@@ -81,7 +81,14 @@ export async function normalizeImageSource(image: string): Promise<NormalizedIma
   const s = image.trim();
   if (!s) throw new Error("image 参数不能为空");
 
-  if (s.startsWith("data:")) return { url: s, note: "data URL 原样传递" };
+  if (s.startsWith("data:")) {
+    const b64 = /;base64,(.*)$/s.exec(s)?.[1];
+    const bytes = b64 ? Buffer.from(b64.replace(/\s+/g, ""), "base64").length : Buffer.byteLength(s, "utf8");
+    if (bytes > MAX_IMAGE_BYTES) {
+      throw new Error(`图片过大（${(bytes / 1024 / 1024).toFixed(1)}MB > 15MB），请压缩后再试`);
+    }
+    return { url: s, note: "data URL 原样传递" };
+  }
 
   if (/^https?:\/\//i.test(s)) return { url: s, note: "远程 URL 原样传递（需公网可达）" };
 
@@ -93,6 +100,9 @@ export async function normalizeImageSource(image: string): Promise<NormalizedIma
   const compact = s.replace(/\s+/g, "");
   if (compact.length > 64 && /^[A-Za-z0-9+/]+=*$/.test(compact)) {
     const buf = Buffer.from(compact, "base64");
+    if (buf.length > MAX_IMAGE_BYTES) {
+      throw new Error(`图片过大（${(buf.length / 1024 / 1024).toFixed(1)}MB > 15MB），请压缩后再试`);
+    }
     if (buf.length > 0) {
       const mime = mimeFromBuffer(buf);
       if (mime) return { url: `data:${mime};base64,${compact}`, note: `base64 字符串（识别为 ${mime}）` };
